@@ -1,0 +1,43 @@
+<div class="list-container">
+  <div
+    *ngIf="tracks().length > 0 && sizeExamples().length > 0"
+    class="scroller-container"
+    cdkVirtualScrollingElement
+  >
+    <div style="display: flex; width: 100%; justify-content: center">
+      <h1>My Virtual Scroller</h1>
+    </div>
+
+    <cdk-virtual-scroll-viewport
+      appExampleBasedVirtualScroll
+      [tracks]="tracks()"
+      [expectedSameSizeCount]="DISTINCT_SIZES"
+      [outgoingBufferFactor]="0.5"
+      [incomingBufferFactor]="1.5"
+      (resized)="updateColumns($event)"
+    >
+      <!-- Put all size examples here, so they can be found and measured, but make them invisible. -->
+      <app-my-list-row
+        *ngFor="let track of sizeExamples()"
+        [attr.data-example-size-id]="track.sizeId()"
+        [track]="track"
+        [columns]="columns()"
+        class="row"
+      />
+
+      <!-- Put scroll content here -->
+      <app-my-list-row
+        *cdkVirtualFor="let track of tracks(); trackBy: tracker"
+        [track]="track"
+        [columns]="columns()"
+        class="row"
+      />
+    </cdk-virtual-scroll-viewport>
+
+    <app-infinite-scroll-end
+      [earlyTriggerFactor]="2"
+      [loading]="loadingHistory"
+      (endReached)="fetchHistory()"
+    />
+  </div>
+</div>

@@ -1,0 +1,24 @@
+<!--
+  The ngx-virtual-scroller-flexible only takes `Tracks` as items to scroll over.
+  It needs to measure examples of all the the tracks that have a unique size.
+  They are extracted into a sizeExamples variable by their `Track.sizeId()` and put into the virtual scroll viewport wrapper with absolute positioning and invisibility as examples of each kind of track with a different size.
+  Whenever their size changes they are remeasured and the scroller recalculates the viewport which allows for responsive Track designs.
+  Unfortunately, as soon as there is one responsive track in the scroller the scrolling position might drift off on container size changes orthogonal to the scroll direction. (width for a vertical scroller)
+  If you have a component like heading that can have different size variants then make sure to make them identifiable via the Track-Model like `MyHeading.level`.
+  This must also be represented in the MyHeading.sizeId() function.
+  -->
+
+@if (isMyHeading(track) && track.level === 1) {
+<h1 class="track">{{ track.text }}</h1>
+} @else if ( isMyHeading(track) && track.level === 2) {
+<h2 class="track">{{ track.text }}</h2>
+} @else if (isMyImageTrack(track)) {
+<div
+  *ngFor="let image of images(track)"
+  class="track"
+>
+  <div style="background-color: azure; border: 1px solid antiquewhite">
+    <div style="width: 100%; aspect-ratio: 4/3">{{ image.id }}</div>
+  </div>
+</div>
+}
