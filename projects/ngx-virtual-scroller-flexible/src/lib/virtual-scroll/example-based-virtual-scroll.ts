@@ -1,8 +1,10 @@
 import {
+  CdkVirtualScrollable,
   CdkVirtualScrollViewport,
+  VIRTUAL_SCROLLABLE,
   VirtualScrollStrategy,
 } from '@angular/cdk/scrolling';
-import { EventEmitter } from '@angular/core';
+import { ElementRef, EventEmitter, inject, NgZone } from '@angular/core';
 import { distinctUntilChanged, Observable, Subject } from 'rxjs';
 import { Range, updatedRange } from './range';
 import { Track } from './types';
@@ -10,6 +12,8 @@ import { Track } from './types';
 export class ExampleBasedVirtualScrollStrategy
   implements VirtualScrollStrategy
 {
+  ngZone = inject(NgZone);
+
   _scrolledIndexChange$ = new Subject<number>();
   scrolledIndexChange: Observable<number> = this._scrolledIndexChange$.pipe(
     distinctUntilChanged()
@@ -22,8 +26,10 @@ export class ExampleBasedVirtualScrollStrategy
   public resized?: EventEmitter<DOMRectReadOnly>;
   public renderedRangeChange?: EventEmitter<[Range, Range]>;
 
+  private _styleElement?: HTMLStyleElement;
   private _resizeObserver?: ResizeObserver;
   private _lastScrollOffset: number = 0;
+  private _lastScrollIndex: number = 0;
   private _forwardScroll: boolean = true;
   private _lastRenderedRange: Range = new Range(-1, -1);
 
@@ -31,19 +37,21 @@ export class ExampleBasedVirtualScrollStrategy
   private _wrapper!: ChildNode | null;
 
   private _tracks: Track[] = [];
+  private _accumulatedTrackOffsets: number[] = [];
+  private _totalHeight: number = 0;
   private _heights = new Map<string, number>();
 
   attach(viewport: CdkVirtualScrollViewport): void {
     this._viewport = viewport;
     this._wrapper = viewport.getElementRef().nativeElement.childNodes[0];
-    this.attachResizeObserver();
-    this._updateExampleHeights();
-    this._viewport.setTotalContentSize(this._totalHeight(this._tracks));
+    this._attachStyleTag(this._viewport.getElementRef().nativeElement);
+    this._attachResizeObserver();
 
+    this._updateExampleHeights();
     this._updateRenderedRange();
   }
 
-  private attachResizeObserver() {
+  private _attachResizeObserver() {
     if (!this._viewport) return;
 
     this._resizeObserver = new ResizeObserver((entries) => {
@@ -54,14 +62,22 @@ export class ExampleBasedVirtualScrollStrategy
     this._resizeObserver.observe(this._viewport.elementRef.nativeElement);
   }
 
+  private _attachStyleTag(container: HTMLElement) {
+    if (this._styleElement === undefined) {
+      this._styleElement = document.createElement('style');
+      container.prepend(this._styleElement);
+    }
+  }
+
   detach(): void {
-    this.detachResizeObserver();
+    this._detachResizeObserver();
+    this._detachStyleTag();
 
     this._viewport = null;
     this._wrapper = null;
   }
 
-  private detachResizeObserver() {
+  private _detachResizeObserver() {
     if (this._resizeObserver) {
       if (this._viewport)
         this._resizeObserver.unobserve(this._viewport.elementRef.nativeElement);
@@ -69,17 +85,20 @@ export class ExampleBasedVirtualScrollStrategy
     }
   }
 
+  private _detachStyleTag() {
+    if (this._styleElement !== undefined) this._styleElement.remove();
+  }
+
   onContentScrolled(): void {
     if (!this._viewport) return;
 
-    this._updateScrollDirection();
     this._updateRenderedRange();
   }
 
   onDataLengthChanged(): void {
     if (!this._viewport) return;
 
-    this._viewport.setTotalContentSize(this._totalHeight(this._tracks));
+    this._viewport.setTotalContentSize(this._totalHeight);
     this._updateRenderedRange();
   }
 
@@ -117,8 +136,27 @@ export class ExampleBasedVirtualScrollStrategy
    */
   updateTracks(tracks: Track[]) {
     this._tracks = tracks;
+    // this._updateExampleHeights();
+    this._updateAccumulatedTrackOffsets();
+    this._updateTotalHeight();
 
     if (this._viewport) this._viewport.checkViewportSize();
+  }
+
+  private _updateAccumulatedTrackOffsets() {
+    const tracks = this._tracks;
+    let currentTotalSize = 0;
+    this._accumulatedTrackOffsets = [0];
+
+    for (let index = 0; index < tracks.length; index++) {
+      const track = tracks[index];
+      currentTotalSize += this._height(track);
+      this._accumulatedTrackOffsets.push(currentTotalSize);
+    }
+  }
+
+  private _updateTotalHeight() {
+    this._totalHeight = this._accumulatedTrackOffsets.at(-1) ?? 0;
   }
 
   /**
@@ -162,25 +200,6 @@ export class ExampleBasedVirtualScrollStrategy
   }
 
   /**
-   * Returns total height of given tracks.
-   *
-   * (Does only account for offsets that are part of the viewport/content
-   * wrapper. Pre-Viewport/Scrollable offsets are irrelevant.)
-   *
-   * @param tracks
-   * @returns
-   */
-  private _totalHeight(tracks: Track[]): number {
-    if (!this._viewport) return 0;
-
-    const total = tracks
-      .map((track) => this._height(track))
-      .reduce((accumulated, value) => accumulated + value, 0);
-
-    return total;
-  }
-
-  /**
    * Returns the offset relative to the top of the container by a provided track
    * index.
    * (Does only account for offsets that are part of the viewport/content wrapper. Pre-Viewport/Scrollable offsets are irrelevant.)
@@ -189,7 +208,7 @@ export class ExampleBasedVirtualScrollStrategy
    * @returns
    */
   private _offset(index: number): number {
-    const offset = this._totalHeight(this._tracks.slice(0, index));
+    const offset = this._accumulatedTrackOffsets[index];
     return offset;
   }
 
@@ -200,18 +219,34 @@ export class ExampleBasedVirtualScrollStrategy
    * @returns
    */
   private _trackIndex(offset: number): number {
-    let accumulatedOffset = 0;
+    const offsets = this._accumulatedTrackOffsets;
+    if (offsets.length <= 1) return 0;
 
-    for (let index = 0; index < this._tracks.length; index++) {
-      const track = this._tracks[index];
-      const trackHeight = this._height(track);
+    offset = Math.max(0, offset);
+    const totalSize = offsets[offsets.length - 1];
+    offset = Math.min(offset, totalSize);
 
-      accumulatedOffset += trackHeight;
+    let low = 0;
+    let high = offsets.length - 2;
+    let itemIndex = 0;
 
-      if (accumulatedOffset >= offset) return index;
+    while (low <= high) {
+      const mid = low + Math.floor((high - low) / 2);
+      if (offsets[mid] <= offset) {
+        // This item (mid) starts at or before the scrollOffset. Check if the
+        // *next* item starts after the scrollOffset, or if this is the last
+        // possible item.
+        if (mid === offsets.length - 2 || offsets[mid + 1] > offset) {
+          itemIndex = mid;
+          break;
+        }
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
     }
 
-    return 0;
+    return itemIndex;
   }
 
   /**
@@ -241,10 +276,10 @@ export class ExampleBasedVirtualScrollStrategy
    * Update the height cache with the actual height of the rendered track
    * components.
    *
-   * @returns
+   * @returns true if any height changed
    */
-  private _updateExampleHeights() {
-    if (!this._wrapper || !this._viewport) return;
+  private _updateExampleHeights(): boolean {
+    if (!this._wrapper || !this._viewport) return false;
 
     const nodes = this._wrapper.childNodes;
     let sizesChanged = false;
@@ -278,8 +313,36 @@ export class ExampleBasedVirtualScrollStrategy
         break;
     }
 
-    if (sizesChanged)
-      this._viewport.setTotalContentSize(this._totalHeight(this._tracks));
+    if (sizesChanged) {
+      this._updateAccumulatedTrackOffsets();
+      this._updateTotalHeight();
+
+      this._viewport.setTotalContentSize(this._totalHeight);
+      this._updateMaskStyles();
+
+      console.log(
+        'Example sizes changed - this should only happen when the dimensions of the scroller change.'
+      );
+    }
+
+    return sizesChanged;
+  }
+
+  private _buildMaskSizeStyles(): string {
+    const css = Array.from(this._heights.entries())
+      .map(
+        ([id, height]) =>
+          `.mask-size-id-${id} { --measured-mask-size: ${height}px; }`
+      )
+      .join('\n');
+
+    return css;
+  }
+
+  private _updateMaskStyles() {
+    if (this._styleElement !== undefined) {
+      this._styleElement.textContent = this._buildMaskSizeStyles();
+    }
   }
 
   /**
@@ -288,28 +351,54 @@ export class ExampleBasedVirtualScrollStrategy
    * @returns
    */
   private _updateRenderedRange() {
-    if (!this._viewport) return;
+    this.ngZone.runOutsideAngular(() => {
+      requestAnimationFrame(() => {
+        if (!this._viewport) return;
 
-    const scrollOffset = this._viewport.measureScrollOffset();
-    const scrollIndex = this._trackIndex(scrollOffset);
-    const visibleTrackCount = this._maxVisibleTrackCount(scrollIndex);
-    const totalTrackCount = this._viewport.getDataLength();
+        const viewportOffset = this._viewport.measureViewportOffset();
+        const scrollOffset = this._viewport.measureScrollOffset();
+        const scrollIndex = this._trackIndex(scrollOffset);
 
-    this._updateExampleHeights();
+        const offsetScrollIndex = this._trackIndex(
+          viewportOffset + scrollOffset
+        );
+        const totalTrackCount = this._viewport.getDataLength();
+        const oldTotalHeight = this._totalHeight;
 
-    const range = updatedRange(
-      scrollIndex,
-      visibleTrackCount,
-      totalTrackCount,
-      this._forwardScroll,
-      this.outgoingBufferFactor,
-      this.incomingBufferFactor
-    );
+        this._updateScrollDirection();
+        const changedHeight = this._updateExampleHeights();
 
-    this._viewport.setRenderedRange(range);
-    this._viewport.setRenderedContentOffset(this._offset(range.start));
+        if (changedHeight) {
+          const newTotalHeight = this._totalHeight;
+          const sizeChangeFactor = newTotalHeight / oldTotalHeight;
+          const newScrollOffset = scrollOffset * sizeChangeFactor;
 
-    this._scrolledIndexChange$.next(scrollIndex);
-    this.emitRenderedRangeChange(range);
+          this._viewport.scrollToOffset(
+            viewportOffset + newScrollOffset,
+            'instant'
+          );
+        }
+
+        const visibleTrackCount = this._maxVisibleTrackCount(scrollIndex);
+        const range = updatedRange(
+          scrollIndex,
+          visibleTrackCount,
+          totalTrackCount,
+          this._forwardScroll,
+          this.outgoingBufferFactor,
+          this.incomingBufferFactor
+        );
+
+        this.ngZone.run(() => {
+          if (!this._viewport) return;
+
+          this._viewport.setRenderedRange(range);
+          this._viewport.setRenderedContentOffset(this._offset(range.start));
+
+          this._scrolledIndexChange$.next(offsetScrollIndex);
+          this.emitRenderedRangeChange(range);
+        });
+      });
+    });
   }
 }
