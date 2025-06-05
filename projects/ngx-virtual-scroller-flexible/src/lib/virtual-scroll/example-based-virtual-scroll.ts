@@ -1,13 +1,12 @@
 import {
-  CdkVirtualScrollable,
   CdkVirtualScrollViewport,
-  VIRTUAL_SCROLLABLE,
   VirtualScrollStrategy,
 } from '@angular/cdk/scrolling';
-import { ElementRef, EventEmitter, inject, NgZone } from '@angular/core';
+import { EventEmitter, inject, NgZone } from '@angular/core';
 import { distinctUntilChanged, Observable, Subject } from 'rxjs';
 import { Range, updatedRange } from './range';
 import { Track } from './types';
+import { throttledCall } from './utils';
 
 export class ExampleBasedVirtualScrollStrategy
   implements VirtualScrollStrategy
@@ -22,14 +21,14 @@ export class ExampleBasedVirtualScrollStrategy
   // public properties through scroll directive
   public expectedSameSizeCount?: number;
   public outgoingBufferFactor: number = 0.5;
-  public incomingBufferFactor: number = 1.5;
+  public incomingBufferFactor: number = 3.5;
   public resized?: EventEmitter<DOMRectReadOnly>;
   public renderedRangeChange?: EventEmitter<[Range, Range]>;
+  public rangeUpdateDelayMs: number = 1000 / 120;
 
   private _styleElement?: HTMLStyleElement;
   private _resizeObserver?: ResizeObserver;
   private _lastScrollOffset: number = 0;
-  private _lastScrollIndex: number = 0;
   private _forwardScroll: boolean = true;
   private _lastRenderedRange: Range = new Range(-1, -1);
 
@@ -47,7 +46,7 @@ export class ExampleBasedVirtualScrollStrategy
     this._attachStyleTag(this._viewport.getElementRef().nativeElement);
     this._attachResizeObserver();
 
-    this._updateExampleHeights();
+    this._updateExampleHeights(true);
     this._updateRenderedRange();
   }
 
@@ -92,14 +91,16 @@ export class ExampleBasedVirtualScrollStrategy
   onContentScrolled(): void {
     if (!this._viewport) return;
 
-    this._updateRenderedRange();
+    // this._updateRenderedRange();
+    this._throttledUpdateRenderedRange();
   }
 
   onDataLengthChanged(): void {
     if (!this._viewport) return;
 
-    this._viewport.setTotalContentSize(this._totalHeight);
-    this._updateRenderedRange();
+    this._updateExampleHeights(true);
+    // this._updateRenderedRange();
+    this._throttledUpdateRenderedRange();
   }
 
   onContentRendered(): void {
@@ -136,13 +137,13 @@ export class ExampleBasedVirtualScrollStrategy
    */
   updateTracks(tracks: Track[]) {
     this._tracks = tracks;
-    // this._updateExampleHeights();
-    this._updateAccumulatedTrackOffsets();
-    this._updateTotalHeight();
 
     if (this._viewport) this._viewport.checkViewportSize();
   }
 
+  /**
+   * Update the accumulated height offsets array.
+   */
   private _updateAccumulatedTrackOffsets() {
     const tracks = this._tracks;
     let currentTotalSize = 0;
@@ -155,12 +156,16 @@ export class ExampleBasedVirtualScrollStrategy
     }
   }
 
+  /**
+   * Update the current total height of the scroller content.
+   */
   private _updateTotalHeight() {
-    this._totalHeight = this._accumulatedTrackOffsets.at(-1) ?? 0;
+    this._totalHeight =
+      this._accumulatedTrackOffsets[this._accumulatedTrackOffsets.length - 1];
   }
 
   /**
-   * Updates the current scroll direction and the last scroll offset position.
+   * Update the current scroll direction and the last scroll offset position.
    */
   private _updateScrollDirection() {
     if (!this._viewport) return;
@@ -222,21 +227,16 @@ export class ExampleBasedVirtualScrollStrategy
     const offsets = this._accumulatedTrackOffsets;
     if (offsets.length <= 1) return 0;
 
-    offset = Math.max(0, offset);
-    const totalSize = offsets[offsets.length - 1];
-    offset = Math.min(offset, totalSize);
-
-    let low = 0;
+    // accumulation adds an element
     let high = offsets.length - 2;
+    let low = 0;
     let itemIndex = 0;
 
     while (low <= high) {
       const mid = low + Math.floor((high - low) / 2);
-      if (offsets[mid] <= offset) {
-        // This item (mid) starts at or before the scrollOffset. Check if the
-        // *next* item starts after the scrollOffset, or if this is the last
-        // possible item.
-        if (mid === offsets.length - 2 || offsets[mid + 1] > offset) {
+
+      if (offsets[mid] < offset) {
+        if (mid === offsets.length - 2 || offsets[mid + 1] >= offset) {
           itemIndex = mid;
           break;
         }
@@ -278,7 +278,9 @@ export class ExampleBasedVirtualScrollStrategy
    *
    * @returns true if any height changed
    */
-  private _updateExampleHeights(): boolean {
+  private _updateExampleHeights(
+    accumulatedSizedChanged: boolean = false
+  ): boolean {
     if (!this._wrapper || !this._viewport) return false;
 
     const nodes = this._wrapper.childNodes;
@@ -301,10 +303,12 @@ export class ExampleBasedVirtualScrollStrategy
 
       const cachedHeight = this._heights.get(id);
       const height = node.getBoundingClientRect().height;
-
-      this._heights.set(id, height);
       examplesMeasured++;
-      if (cachedHeight !== height) sizesChanged = true;
+
+      if (cachedHeight !== height) {
+        this._heights.set(id, height);
+        sizesChanged = true;
+      }
 
       if (
         this.expectedSameSizeCount &&
@@ -313,21 +317,27 @@ export class ExampleBasedVirtualScrollStrategy
         break;
     }
 
-    if (sizesChanged) {
+    if (sizesChanged || accumulatedSizedChanged) {
       this._updateAccumulatedTrackOffsets();
       this._updateTotalHeight();
 
       this._viewport.setTotalContentSize(this._totalHeight);
       this._updateMaskStyles();
 
-      console.log(
-        'Example sizes changed - this should only happen when the dimensions of the scroller change.'
-      );
+      if (!accumulatedSizedChanged)
+        console.log(
+          'Example sizes changed - this should only happen when the dimensions of the scroller change.'
+        );
     }
 
     return sizesChanged;
   }
 
+  /**
+   * Builds a CSS string containing classes with `--measured-mask-size` variables
+   * for each measured item height, based on the `_heights` map.
+   * These classes can be applied to elements to inherit the measured height.
+   */
   private _buildMaskSizeStyles(): string {
     const css = Array.from(this._heights.entries())
       .map(
@@ -339,6 +349,10 @@ export class ExampleBasedVirtualScrollStrategy
     return css;
   }
 
+  /**
+   * Updates the contents of the dynamically injected style element
+   * with the latest mask size CSS rules for measured item heights.
+   */
   private _updateMaskStyles() {
     if (this._styleElement !== undefined) {
       this._styleElement.textContent = this._buildMaskSizeStyles();
@@ -401,4 +415,8 @@ export class ExampleBasedVirtualScrollStrategy
       });
     });
   }
+
+  private _throttledUpdateRenderedRange = throttledCall(() => {
+    this._updateRenderedRange();
+  }, this.rangeUpdateDelayMs);
 }

@@ -63,11 +63,23 @@ export class ExampleBasedVirtualScrollDirective {
    * Sets the factor of how much of the visible viewport should be buffered on the side that is scrolled into the viewport.
    * For a 1000px viewport and a factor of 1.5 that would mean that 1500px after the visible area are already prepared in memory to allow for very performant forward scrolling.
    *
-   * Default: 1.5
+   * Default: 3.5
    */
   @Input()
   set incomingBufferFactor(value: number) {
     this._scrollStrategy.incomingBufferFactor = value;
+  }
+
+  /**
+   * Sets the delay in milliseconds of how much time must pass after a range
+   * update (render) call was performed. If new calls where fired during the
+   * delay, only the most recent one will be left to trigger.
+   *
+   * Default: 1000 / 120 <-> ~8.3ms <-> ~120 Hz
+   */
+  @Input()
+  set rangeUpdateDelayMs(value: number) {
+    this._scrollStrategy.rangeUpdateDelayMs = value;
   }
 
   /**
