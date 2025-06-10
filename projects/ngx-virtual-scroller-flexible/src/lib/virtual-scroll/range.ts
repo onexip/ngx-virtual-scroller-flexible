@@ -44,7 +44,7 @@ export function updatedRange(
   outgoingBufferFactor: number,
   incomingBufferFactor: number
 ) {
-  const bufferBefore = Math.floor(
+  const bufferBefore = Math.ceil(
     (scrollingForward ? outgoingBufferFactor : incomingBufferFactor) *
       visibleItemCount
   );

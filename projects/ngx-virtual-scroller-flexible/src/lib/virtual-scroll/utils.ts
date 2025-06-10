@@ -73,39 +73,3 @@ export function responsiveOrthogonalTrackCount(
     breakpoints.length + 1
   );
 }
-
-export function throttledCall<T extends (...args: any[]) => void>(
-  callback: T,
-  delayMs = 1000 / 60
-): (...args: Parameters<T>) => void {
-  let lastCallTime = 0;
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  let latestArgs: Parameters<T> | null = null;
-
-  function invoke(now: number) {
-    lastCallTime = now;
-    callback(...(latestArgs as Parameters<T>));
-    latestArgs = null;
-  }
-
-  return function throttled(...args: Parameters<T>) {
-    const now = performance.now();
-    const timeSinceLast = now - lastCallTime;
-
-    latestArgs = args;
-
-    if (timeSinceLast >= delayMs) {
-      if (timeoutId !== null) {
-        clearTimeout(timeoutId);
-        timeoutId = null;
-      }
-      invoke(now);
-    } else if (timeoutId === null) {
-      const timeRemaining = delayMs - timeSinceLast;
-      timeoutId = setTimeout(() => {
-        timeoutId = null;
-        invoke(performance.now());
-      }, timeRemaining);
-    }
-  };
-}

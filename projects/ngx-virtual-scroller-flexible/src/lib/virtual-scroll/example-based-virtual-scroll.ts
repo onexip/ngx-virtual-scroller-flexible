@@ -6,7 +6,6 @@ import { EventEmitter, inject, NgZone } from '@angular/core';
 import { distinctUntilChanged, Observable, Subject } from 'rxjs';
 import { Range, updatedRange } from './range';
 import { Track } from './types';
-import { throttledCall } from './utils';
 
 export class ExampleBasedVirtualScrollStrategy
   implements VirtualScrollStrategy
@@ -24,10 +23,8 @@ export class ExampleBasedVirtualScrollStrategy
   public incomingBufferFactor: number = 3.5;
   public resized?: EventEmitter<DOMRectReadOnly>;
   public renderedRangeChange?: EventEmitter<[Range, Range]>;
-  public rangeUpdateDelayMs: number = 1000 / 120;
 
   private _styleElement?: HTMLStyleElement;
-  private _resizeObserver?: ResizeObserver;
   private _lastScrollOffset: number = 0;
   private _forwardScroll: boolean = true;
   private _lastRenderedRange: Range = new Range(-1, -1);
@@ -44,21 +41,9 @@ export class ExampleBasedVirtualScrollStrategy
     this._viewport = viewport;
     this._wrapper = viewport.getElementRef().nativeElement.childNodes[0];
     this._attachStyleTag(this._viewport.getElementRef().nativeElement);
-    this._attachResizeObserver();
 
     this._updateExampleHeights(true);
     this._updateRenderedRange();
-  }
-
-  private _attachResizeObserver() {
-    if (!this._viewport) return;
-
-    this._resizeObserver = new ResizeObserver((entries) => {
-      const contentRect = entries[0].contentRect;
-
-      if (this.resized) this.resized.emit(contentRect);
-    });
-    this._resizeObserver.observe(this._viewport.elementRef.nativeElement);
   }
 
   private _attachStyleTag(container: HTMLElement) {
@@ -69,19 +54,10 @@ export class ExampleBasedVirtualScrollStrategy
   }
 
   detach(): void {
-    this._detachResizeObserver();
     this._detachStyleTag();
 
     this._viewport = null;
     this._wrapper = null;
-  }
-
-  private _detachResizeObserver() {
-    if (this._resizeObserver) {
-      if (this._viewport)
-        this._resizeObserver.unobserve(this._viewport.elementRef.nativeElement);
-      this._resizeObserver = undefined;
-    }
   }
 
   private _detachStyleTag() {
@@ -91,16 +67,14 @@ export class ExampleBasedVirtualScrollStrategy
   onContentScrolled(): void {
     if (!this._viewport) return;
 
-    // this._updateRenderedRange();
-    this._throttledUpdateRenderedRange();
+    this._updateRenderedRange();
   }
 
   onDataLengthChanged(): void {
     if (!this._viewport) return;
 
     this._updateExampleHeights(true);
-    // this._updateRenderedRange();
-    this._throttledUpdateRenderedRange();
+    this._updateRenderedRange();
   }
 
   onContentRendered(): void {
@@ -365,58 +339,46 @@ export class ExampleBasedVirtualScrollStrategy
    * @returns
    */
   private _updateRenderedRange() {
-    this.ngZone.runOutsideAngular(() => {
-      requestAnimationFrame(() => {
-        if (!this._viewport) return;
+    if (!this._viewport) return;
 
-        const viewportOffset = this._viewport.measureViewportOffset();
-        const scrollOffset = this._viewport.measureScrollOffset();
-        const scrollIndex = this._trackIndex(scrollOffset);
+    const viewportOffset = this._viewport.measureViewportOffset();
+    const scrollOffset = this._viewport.measureScrollOffset();
+    const scrollIndex = this._trackIndex(scrollOffset);
 
-        const offsetScrollIndex = this._trackIndex(
-          viewportOffset + scrollOffset
-        );
-        const totalTrackCount = this._viewport.getDataLength();
-        const oldTotalHeight = this._totalHeight;
+    const offsetScrollIndex = this._trackIndex(viewportOffset + scrollOffset);
+    const totalTrackCount = this._viewport.getDataLength();
+    const oldTotalHeight = this._totalHeight;
 
-        this._updateScrollDirection();
-        const changedHeight = this._updateExampleHeights();
+    this._updateScrollDirection();
+    const changedHeight = this._updateExampleHeights();
 
-        if (changedHeight) {
-          const newTotalHeight = this._totalHeight;
-          const sizeChangeFactor = newTotalHeight / oldTotalHeight;
-          const newScrollOffset = scrollOffset * sizeChangeFactor;
+    if (changedHeight) {
+      const newTotalHeight = this._totalHeight;
+      const sizeChangeFactor = newTotalHeight / oldTotalHeight;
+      const newScrollOffset = scrollOffset * sizeChangeFactor;
 
-          this._viewport.scrollToOffset(
-            viewportOffset + newScrollOffset,
-            'instant'
-          );
-        }
+      this._viewport.scrollToOffset(
+        viewportOffset + newScrollOffset,
+        'instant'
+      );
+    }
 
-        const visibleTrackCount = this._maxVisibleTrackCount(scrollIndex);
-        const range = updatedRange(
-          scrollIndex,
-          visibleTrackCount,
-          totalTrackCount,
-          this._forwardScroll,
-          this.outgoingBufferFactor,
-          this.incomingBufferFactor
-        );
+    const visibleTrackCount = this._maxVisibleTrackCount(scrollIndex);
+    const range = updatedRange(
+      scrollIndex,
+      visibleTrackCount,
+      totalTrackCount,
+      this._forwardScroll,
+      this.outgoingBufferFactor,
+      this.incomingBufferFactor
+    );
 
-        this.ngZone.run(() => {
-          if (!this._viewport) return;
+    if (!this._viewport) return;
 
-          this._viewport.setRenderedRange(range);
-          this._viewport.setRenderedContentOffset(this._offset(range.start));
+    this._viewport.setRenderedRange(range);
+    this._viewport.setRenderedContentOffset(this._offset(range.start));
 
-          this._scrolledIndexChange$.next(offsetScrollIndex);
-          this.emitRenderedRangeChange(range);
-        });
-      });
-    });
+    this._scrolledIndexChange$.next(offsetScrollIndex);
+    this.emitRenderedRangeChange(range);
   }
-
-  private _throttledUpdateRenderedRange = throttledCall(() => {
-    this._updateRenderedRange();
-  }, this.rangeUpdateDelayMs);
 }

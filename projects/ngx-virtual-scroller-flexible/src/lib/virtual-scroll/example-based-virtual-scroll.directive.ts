@@ -71,32 +71,12 @@ export class ExampleBasedVirtualScrollDirective {
   }
 
   /**
-   * Sets the delay in milliseconds of how much time must pass after a range
-   * update (render) call was performed. If new calls where fired during the
-   * delay, only the most recent one will be left to trigger.
-   *
-   * Default: 1000 / 120 <-> ~8.3ms <-> ~120 Hz
-   */
-  @Input()
-  set rangeUpdateDelayMs(value: number) {
-    this._scrollStrategy.rangeUpdateDelayMs = value;
-  }
-
-  /**
-   * Emits when the viewport size changes, sending the updated
-   * `DOMRectReadOnly`.
-   */
-  @Output()
-  resized = new EventEmitter<DOMRectReadOnly>();
-
-  /**
    * Emits the updated rendered range when it distinctly changes.
    */
   @Output()
   renderedRangeChange = new EventEmitter<[Range, Range]>();
 
   constructor() {
-    this._scrollStrategy.resized = this.resized;
     this._scrollStrategy.renderedRangeChange = this.renderedRangeChange;
   }
 }
