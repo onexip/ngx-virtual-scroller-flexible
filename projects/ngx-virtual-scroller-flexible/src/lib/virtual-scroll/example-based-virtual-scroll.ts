@@ -113,8 +113,6 @@ export class ExampleBasedVirtualScrollStrategy
    * Update the measured example sizes.
    */
   remeasureExampleSizes() {
-    // this._updateExampleHeights(true);
-    console.log('### remeasure ###', this._heights);
     if (this._viewport) this._viewport.checkViewportSize();
   }
 
