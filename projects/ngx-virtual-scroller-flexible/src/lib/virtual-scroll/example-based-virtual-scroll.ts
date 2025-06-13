@@ -2,7 +2,7 @@ import {
   CdkVirtualScrollViewport,
   VirtualScrollStrategy,
 } from '@angular/cdk/scrolling';
-import { EventEmitter, inject, NgZone } from '@angular/core';
+import { EventEmitter } from '@angular/core';
 import { distinctUntilChanged, Observable, Subject } from 'rxjs';
 import { Range, updatedRange } from './range';
 import { Track } from './types';
@@ -10,8 +10,6 @@ import { Track } from './types';
 export class ExampleBasedVirtualScrollStrategy
   implements VirtualScrollStrategy
 {
-  ngZone = inject(NgZone);
-
   _scrolledIndexChange$ = new Subject<number>();
   scrolledIndexChange: Observable<number> = this._scrolledIndexChange$.pipe(
     distinctUntilChanged()
@@ -65,14 +63,10 @@ export class ExampleBasedVirtualScrollStrategy
   }
 
   onContentScrolled(): void {
-    if (!this._viewport) return;
-
     this._updateRenderedRange();
   }
 
   onDataLengthChanged(): void {
-    if (!this._viewport) return;
-
     this._updateExampleHeights(true);
     this._updateRenderedRange();
   }
@@ -112,6 +106,15 @@ export class ExampleBasedVirtualScrollStrategy
   updateTracks(tracks: Track[]) {
     this._tracks = tracks;
 
+    if (this._viewport) this._viewport.checkViewportSize();
+  }
+
+  /**
+   * Update the measured example sizes.
+   */
+  remeasureExampleSizes() {
+    // this._updateExampleHeights(true);
+    console.log('### remeasure ###', this._heights);
     if (this._viewport) this._viewport.checkViewportSize();
   }
 
@@ -172,10 +175,9 @@ export class ExampleBasedVirtualScrollStrategy
   private _height(track: Track): number {
     const cachedHeight = this._heights.get(track.sizeId());
 
-    if (cachedHeight === undefined)
-      throw new Error(`Example height missing for size id: ${track.sizeId()}`);
+    if (cachedHeight !== undefined) return cachedHeight;
 
-    return cachedHeight;
+    return 0;
   }
 
   /**

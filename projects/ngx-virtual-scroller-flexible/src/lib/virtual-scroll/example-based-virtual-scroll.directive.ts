@@ -25,7 +25,8 @@ import { Track } from './types';
   ],
 })
 export class ExampleBasedVirtualScrollDirective {
-  _scrollStrategy = new ExampleBasedVirtualScrollStrategy();
+  private _scrollStrategy = new ExampleBasedVirtualScrollStrategy();
+  private _triggerRemeasure: boolean = false;
 
   /**
    * Sets the track items to virtually scroll over. A track represents a row or
@@ -68,6 +69,21 @@ export class ExampleBasedVirtualScrollDirective {
   @Input()
   set incomingBufferFactor(value: number) {
     this._scrollStrategy.incomingBufferFactor = value;
+  }
+
+  /**
+   * Triggers example size remeasurement on changing to true.
+   */
+  @Input()
+  set triggerRemeasure(value: boolean) {
+    if (value) {
+      requestAnimationFrame(() => {
+        this._scrollStrategy.remeasureExampleSizes();
+      });
+    }
+  }
+  get triggerRemeasure(): boolean {
+    return this._triggerRemeasure;
   }
 
   /**
