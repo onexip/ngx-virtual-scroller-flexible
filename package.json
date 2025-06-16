@@ -1,5 +1,5 @@
 {
-  "name": "ngx-virtual-scroller-flexible",
+  "name": "@onexip/ngx-virtual-scroller-flexible",
   "version": "1.0.0",
   "scripts": {
     "ng": "ng",
@@ -49,5 +49,25 @@
     "singleQuote": true,
     "singleAttributePerLine": true,
     "printWidth": 80
-  }
+  },
+  "description": "fast and flexible virtual scroller which can handle items with different sizes perfectly",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/onexip/ngx-virtual-scroller-flexible.git"
+  },
+  "keywords": [
+    "angular",
+    "responsive",
+    "different-sized",
+    "children",
+    "virtual",
+    "scroller"
+  ],
+  "author": "onexip",
+  "license": "GPL-3.0-only",
+  "bugs": {
+    "url": "https://github.com/onexip/ngx-virtual-scroller-flexible/issues"
+  },
+  "homepage": "https://github.com/onexip/ngx-virtual-scroller-flexible#readme"
 }
