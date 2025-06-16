@@ -1,0 +1,53 @@
+{
+  "name": "ngx-virtual-scroller-flexible",
+  "version": "1.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build --configuration production",
+    "build:publish": "npm run build && npm publish --access=public ./dist/ngx-virtual-scroller-flexible",
+    "watch": "ng build --watch --configuration development",
+    "yalc:push": "cd ./dist/ngx-virtual-scroller-flexible && yalc push --private",
+    "build:yalc:push": "ng build && cd ./dist/ngx-virtual-scroller-flexible && yalc push --private --prefix",
+    "watch:yalc:push": "ng build --watch --configuration development & nodemon --watch dist --delay 3000ms --exec 'cd ./dist/ngx-virtual-scroller-flexible && yalc push --private'",
+    "test": "ng test",
+    "build:pack": "ng build && npm pack dist/ngx-virtual-scroller-flexible/"
+  },
+  "private": true,
+  "dependencies": {
+    "@angular/animations": "^19.2.3",
+    "@angular/cdk": "^19.2.6",
+    "@angular/common": "^19.2.3",
+    "@angular/compiler": "^19.2.3",
+    "@angular/core": "^19.2.3",
+    "@angular/forms": "^19.2.3",
+    "@angular/platform-browser": "^19.2.3",
+    "@angular/platform-browser-dynamic": "^19.2.3",
+    "@angular/router": "^19.2.3",
+    "rxjs": "^7.8.2",
+    "tslib": "^2.8.1",
+    "zone.js": "^0.15.0"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^19.2.4",
+    "@angular/cli": "^19.2.4",
+    "@angular/compiler-cli": "^19.2.3",
+    "@types/jasmine": "^5.1.7",
+    "jasmine-core": "^5.6.0",
+    "karma": "^6.4.4",
+    "karma-chrome-launcher": "^3.2.0",
+    "karma-coverage": "^2.2.1",
+    "karma-jasmine": "^5.1.0",
+    "karma-jasmine-html-reporter": "^2.1.0",
+    "ng-packagr": "^19.2.0",
+    "nodemon": "^3.1.9",
+    "typescript": "^5.8.2"
+  },
+  "prettier": {
+    "useTabs": false,
+    "tabWidth": 2,
+    "singleQuote": true,
+    "singleAttributePerLine": true,
+    "printWidth": 80
+  }
+}

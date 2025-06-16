@@ -1,0 +1,23 @@
+.list-container {
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+}
+
+.scroller-container {
+  width: 100%;
+  height: 100%;
+}
+
+.row {
+  --columns: 1;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(var(--columns), 1fr);
+  grid-template-rows: auto;
+
+  &:where([data-example-size-id]) {
+    visibility: hidden;
+    position: absolute;
+  }
+}

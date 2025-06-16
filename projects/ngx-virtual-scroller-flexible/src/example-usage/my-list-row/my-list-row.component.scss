@@ -1,0 +1,7 @@
+.track {
+  display: block;
+  // NOTE: overflow and nowrap are required to have no track grow beyond the
+  // measured examples size
+  overflow: hidden;
+  white-space: nowrap;
+}
