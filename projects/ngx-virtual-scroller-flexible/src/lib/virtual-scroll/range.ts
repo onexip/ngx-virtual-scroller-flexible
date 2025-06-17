@@ -8,7 +8,8 @@ export class Range {
   /**
    * Constructs a Range instance.
    * @param start - The starting index of the range.
-   * @param end - The ending index of the range.
+   * @param end - The ending index of the range. (exclusive -> index = first
+   * invisible)
    */
   constructor(start: number, end: number) {
     this.start = start;
@@ -55,7 +56,8 @@ export function updatedRange(
 
   const range = new Range(
     Math.max(0, scrollIndex - bufferBefore),
-    Math.min(totalItemCount, scrollIndex + visibleItemCount + bufferAfter)
+    // + 1 as Range.end is exclusive
+    Math.min(totalItemCount, scrollIndex + 1 + visibleItemCount + bufferAfter)
   );
 
   return range;
