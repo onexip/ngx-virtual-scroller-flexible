@@ -1,9 +1,6 @@
 {
-  "name": "ngx-virtual-scroller-flexible",
-  "version": "1.0.0",
-  "publishConfig": {
-    "registry": "https://mix-software.com/repository/npm-web/"
-  },
+  "name": "@onexip/ngx-virtual-scroller-flexible",
+  "version": "1.0.1",
   "peerDependencies": {
     "@angular/common": "^19.2.3",
     "@angular/core": "^19.2.3"

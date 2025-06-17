@@ -1,6 +1,6 @@
 {
   "name": "@onexip/ngx-virtual-scroller-flexible",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
@@ -13,7 +13,6 @@
     "test": "ng test",
     "build:pack": "ng build && npm pack dist/ngx-virtual-scroller-flexible/"
   },
-  "private": true,
   "dependencies": {
     "@angular/animations": "^19.2.3",
     "@angular/cdk": "^19.2.6",
