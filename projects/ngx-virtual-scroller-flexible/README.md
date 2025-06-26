@@ -1,6 +1,6 @@
 # ngx-virtual-scroller-flexible
 
-The `ngx-virtual-scroller-flexible` is a ultra fast and flexible virtual scroller which can render an unlimited set of items with different heights perfectly.
+The `ngx-virtual-scroller-flexible` is an ultra fast and flexible virtual scroller which can render an unlimited set of items with different heights perfectly.
 
 ## Approach
 
