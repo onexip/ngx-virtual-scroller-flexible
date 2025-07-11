@@ -53,7 +53,7 @@ export class ExampleBasedVirtualScrollDirective {
    * Sets the factor of how much of the visible viewport should be buffered on the side that is scrolled away out of the viewport.
    * For a 1000px viewport and a factor of 0.5 that would mean that 500px before the visible area are still kept in memory to allow for performant 'scroll backs'.
    *
-   * Default: 0.5
+   * Default: 0.0
    */
   @Input()
   set outgoingBufferFactor(value: number) {
@@ -64,11 +64,22 @@ export class ExampleBasedVirtualScrollDirective {
    * Sets the factor of how much of the visible viewport should be buffered on the side that is scrolled into the viewport.
    * For a 1000px viewport and a factor of 1.5 that would mean that 1500px after the visible area are already prepared in memory to allow for very performant forward scrolling.
    *
-   * Default: 3.5
+   * Default: 0.8
    */
   @Input()
   set incomingBufferFactor(value: number) {
     this._scrollStrategy.incomingBufferFactor = value;
+  }
+
+  /**
+   * Sets the factor of how much of the visible viewport assets should be prepared on the side that is scrolled into the viewport.
+   * For a 1000px viewport and a factor of 2 that would mean that 2000px after the visible areas assets are already prepared in the dom to allow for very performant forward scrolling.
+   *
+   * Default: 2
+   */
+  @Input()
+  set incomingAssetPreparationFactor(value: number) {
+    this._scrollStrategy.incomingAssetPreparationFactor = value;
   }
 
   /**
@@ -90,9 +101,34 @@ export class ExampleBasedVirtualScrollDirective {
    * Emits the updated rendered range when it distinctly changes.
    */
   @Output()
-  renderedRangeChange = new EventEmitter<[Range, Range]>();
+  renderedRangeChange = new EventEmitter<Range>();
+
+  /**
+   * Emits the updated rendered range when it distinctly changes.
+   */
+  @Output()
+  renderedAssetRangeChange = new EventEmitter<Range>();
 
   constructor() {
     this._scrollStrategy.renderedRangeChange = this.renderedRangeChange;
+    this._scrollStrategy.renderedAssetRangeChange =
+      this.renderedAssetRangeChange;
+
+    if (
+      this._scrollStrategy.incomingBufferFactor >
+      this._scrollStrategy.incomingAssetPreparationFactor
+    ) {
+      this._scrollStrategy.incomingAssetPreparationFactor =
+        this._scrollStrategy.incomingBufferFactor;
+
+      console.error(
+        {
+          incomingAssetPreparationFactor:
+            this._scrollStrategy.incomingAssetPreparationFactor,
+        },
+        "can't be smaller than",
+        { incomingBufferFactor: this._scrollStrategy.incomingBufferFactor }
+      );
+    }
   }
 }

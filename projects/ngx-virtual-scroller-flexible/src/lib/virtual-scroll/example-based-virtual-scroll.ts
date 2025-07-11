@@ -17,15 +17,18 @@ export class ExampleBasedVirtualScrollStrategy
 
   // public properties through scroll directive
   public expectedSameSizeCount?: number;
-  public outgoingBufferFactor: number = 0.5;
-  public incomingBufferFactor: number = 3.5;
+  public outgoingBufferFactor: number = 0.0;
+  public incomingBufferFactor: number = 0.8;
+  public incomingAssetPreparationFactor: number = 2;
   public resized?: EventEmitter<DOMRectReadOnly>;
-  public renderedRangeChange?: EventEmitter<[Range, Range]>;
+  public renderedRangeChange?: EventEmitter<Range>;
+  public renderedAssetRangeChange?: EventEmitter<Range>;
 
   private _styleElement?: HTMLStyleElement;
   private _lastScrollOffset: number = 0;
   private _forwardScroll: boolean = true;
   private _lastRenderedRange: Range = new Range(-1, -1);
+  private _lastRenderedAssetRange: Range = new Range(-1, -1);
 
   private _viewport!: CdkVirtualScrollViewport | null;
   private _wrapper!: ChildNode | null;
@@ -81,10 +84,21 @@ export class ExampleBasedVirtualScrollStrategy
 
   emitRenderedRangeChange(range: Range) {
     if (!this._lastRenderedRange || !this._lastRenderedRange.equals(range)) {
-      if (this.renderedRangeChange)
-        this.renderedRangeChange.emit([this._lastRenderedRange, range]);
+      if (this.renderedRangeChange) this.renderedRangeChange.emit(range);
       else throw Error('Event emitter undefined.');
       this._lastRenderedRange = range;
+    }
+  }
+
+  emitRenderedAssetRangeChange(range: Range) {
+    if (
+      !this._lastRenderedAssetRange ||
+      !this._lastRenderedAssetRange.equals(range)
+    ) {
+      if (this.renderedAssetRangeChange)
+        this.renderedAssetRangeChange.emit(range);
+      else throw Error('Event emitter undefined.');
+      this._lastRenderedAssetRange = range;
     }
   }
 
@@ -372,6 +386,14 @@ export class ExampleBasedVirtualScrollStrategy
       this.outgoingBufferFactor,
       this.incomingBufferFactor
     );
+    const assetRange = updatedRange(
+      scrollIndex,
+      visibleTrackCount,
+      totalTrackCount,
+      this._forwardScroll,
+      this.outgoingBufferFactor,
+      this.incomingAssetPreparationFactor
+    );
 
     if (!this._viewport) return;
 
@@ -380,5 +402,6 @@ export class ExampleBasedVirtualScrollStrategy
 
     this._scrolledIndexChange$.next(offsetScrollIndex);
     this.emitRenderedRangeChange(range);
+    this.emitRenderedAssetRangeChange(assetRange);
   }
 }
