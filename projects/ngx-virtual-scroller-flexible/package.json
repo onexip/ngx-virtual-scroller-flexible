@@ -1,9 +1,9 @@
 {
   "name": "@onexip/ngx-virtual-scroller-flexible",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "peerDependencies": {
-    "@angular/common": "^19.0.0",
-    "@angular/core": "^19.0.0"
+    "@angular/common": "^20.0.0",
+    "@angular/core": "^20.0.0"
   },
   "sideEffects": false
 }
