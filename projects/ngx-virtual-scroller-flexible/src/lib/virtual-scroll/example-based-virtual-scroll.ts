@@ -178,8 +178,8 @@ export class ExampleBasedVirtualScrollStrategy
   }
 
   /**
-   * Returns the height of a given track from the heights cache. Throws if
-   * height for size id is missing.
+   * Returns the height of a given track from the heights cache. Returns
+   * Infinity if height for size id is missing.
    *
    * @param track
    * @returns
@@ -189,7 +189,10 @@ export class ExampleBasedVirtualScrollStrategy
 
     if (cachedHeight !== undefined) return cachedHeight;
 
-    return 0;
+    // If new tracks with not yet measured size-ids where added, then Infinity
+    // makes it so that the scroller assumes, that only one Element is currently
+    // visible.
+    return Infinity;
   }
 
   /**
@@ -267,15 +270,13 @@ export class ExampleBasedVirtualScrollStrategy
    * @returns true if any height changed
    */
   private _updateExampleHeights(
-    accumulatedSizedChanged: boolean = false
+    accumulatedSizesChanged: boolean = false
   ): boolean {
     if (!this._wrapper || !this._viewport) return false;
 
     const nodes = this._wrapper.childNodes;
     let sizesChanged = false;
     let examplesMeasured = 0;
-
-    // NOTE: One could add early return if one knew how many different heights are expected...
 
     for (let index = 0; index < nodes.length; index++) {
       const node = nodes[index] as HTMLElement;
@@ -305,14 +306,14 @@ export class ExampleBasedVirtualScrollStrategy
         break;
     }
 
-    if (sizesChanged || accumulatedSizedChanged) {
+    if (sizesChanged || accumulatedSizesChanged) {
       this._updateAccumulatedTrackOffsets();
       this._updateTotalHeight();
 
       this._viewport.setTotalContentSize(this._totalHeight);
       this._updateMaskStyles();
 
-      if (!accumulatedSizedChanged)
+      if (!accumulatedSizesChanged)
         console.log(
           'Example sizes changed - this should only happen when the dimensions of the scroller change.'
         );

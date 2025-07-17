@@ -104,7 +104,7 @@ export class ExampleBasedVirtualScrollDirective {
   renderedRangeChange = new EventEmitter<Range>();
 
   /**
-   * Emits the updated rendered range when it distinctly changes.
+   * Emits the updated asset preparation range when it distinctly changes.
    */
   @Output()
   renderedAssetRangeChange = new EventEmitter<Range>();
