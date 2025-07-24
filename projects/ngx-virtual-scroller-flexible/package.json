@@ -1,9 +1,27 @@
 {
   "name": "@onexip/ngx-virtual-scroller-flexible",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "peerDependencies": {
     "@angular/common": "^20.0.0",
     "@angular/core": "^20.0.0"
   },
-  "sideEffects": false
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/onexip/ngx-virtual-scroller-flexible.git"
+  },
+  "keywords": [
+    "angular",
+    "responsive",
+    "different-sized",
+    "children",
+    "virtual",
+    "scroller"
+  ],
+  "author": "onexip",
+  "license": "GPL-3.0-only",
+  "bugs": {
+    "url": "https://github.com/onexip/ngx-virtual-scroller-flexible/issues"
+  },
+  "homepage": "https://github.com/onexip/ngx-virtual-scroller-flexible#readme"
 }

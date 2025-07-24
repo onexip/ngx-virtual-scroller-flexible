@@ -2,18 +2,19 @@ import {
   CdkVirtualScrollViewport,
   VirtualScrollStrategy,
 } from '@angular/cdk/scrolling';
-import { EventEmitter } from '@angular/core';
-import { distinctUntilChanged, Observable, Subject } from 'rxjs';
+import { computed, EventEmitter, signal } from '@angular/core';
+import { toObservable } from '@angular/core/rxjs-interop';
+import { distinctUntilChanged, lastValueFrom, Observable, Subject } from 'rxjs';
 import { Range, updatedRange } from './range';
 import { Track } from './types';
 
 export class ExampleBasedVirtualScrollStrategy
   implements VirtualScrollStrategy
 {
-  _scrolledIndexChange$ = new Subject<number>();
-  scrolledIndexChange: Observable<number> = this._scrolledIndexChange$.pipe(
-    distinctUntilChanged()
-  );
+  private _scrolledIndex = signal<number>(0);
+  scrolledIndexChange = toObservable(
+    computed(() => this._scrolledIndex())
+  ).pipe(distinctUntilChanged());
 
   // public properties through scroll directive
   public expectedSameSizeCount?: number;
@@ -112,15 +113,41 @@ export class ExampleBasedVirtualScrollStrategy
     this._viewport.scrollToOffset(offset, behavior);
   }
 
+  switchToIndex(index: number): void {
+    if (!this._viewport) return;
+
+    const scrollOffset = this._viewport.measureScrollOffset();
+    const scrollIndex = this._trackIndex(scrollOffset);
+    const scrollIndexOffset = this._offset(scrollIndex);
+    const innerTrackItemOffset = scrollOffset - scrollIndexOffset;
+
+    const startOffset = this._startOffset();
+    const heightsOffset = this._offset(index);
+    const offset = startOffset + heightsOffset + innerTrackItemOffset;
+
+    this._viewport.scrollToOffset(offset, 'instant');
+  }
+
   /**
-   * Update the tracks array.
+   * Update the tracks array. Keep the last track in view when possible.
    *
    * @param tracks
    */
-  updateTracks(tracks: Track[]) {
+  updateTracks(tracks: Track[]): void {
+    const currentIndex = this._scrolledIndex();
+    const isValidIndex = 0 < currentIndex && currentIndex < this._tracks.length;
+
+    const nextIndex = isValidIndex
+      ? tracks.findIndex(
+          (track) => track.trackId() === this._tracks[currentIndex].trackId()
+        )
+      : -1;
+
     this._tracks = tracks;
 
-    if (this._viewport) this._viewport.checkViewportSize();
+    this._viewport?.checkViewportSize();
+
+    if (nextIndex > 0) this.switchToIndex(nextIndex);
   }
 
   /**
@@ -196,9 +223,10 @@ export class ExampleBasedVirtualScrollStrategy
   }
 
   /**
-   * Returns the offset relative to the top of the container by a provided track
-   * index.
-   * (Does only account for offsets that are part of the viewport/content wrapper. Pre-Viewport/Scrollable offsets are irrelevant.)
+   * Returns the offset relative to the top of the container and the top of the
+   * track of a provided track index. (Does only account for offsets that are
+   * part of the viewport/content wrapper. Pre-Viewport/Scrollable offsets are
+   * irrelevant.)
    *
    * @param index
    * @returns
@@ -401,7 +429,7 @@ export class ExampleBasedVirtualScrollStrategy
     this._viewport.setRenderedRange(range);
     this._viewport.setRenderedContentOffset(this._offset(range.start));
 
-    this._scrolledIndexChange$.next(offsetScrollIndex);
+    this._scrolledIndex.set(offsetScrollIndex);
     this.emitRenderedRangeChange(range);
     this.emitRenderedAssetRangeChange(assetRange);
   }

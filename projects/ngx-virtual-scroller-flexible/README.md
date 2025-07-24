@@ -60,4 +60,4 @@ There you can see how to use the component with all it's features.
 
 ## Version Hints
 - 1.0.0 - 1.0.3, 1.0.5 = Angular 19
-- 1.0.4, 1.0.6 = Angular 20
+- 1.0.4, 1.0.6, 1.0.7 = Angular 20
