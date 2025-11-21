@@ -26,6 +26,9 @@ export function distinctSizeIds(
     if (expectedCount !== undefined && filtered.length >= expectedCount) break;
   }
 
+  // Clear Set to help GC - important when called frequently
+  distinct.clear();
+
   return filtered;
 }
 

@@ -58,12 +58,22 @@ export class ExampleBasedVirtualScrollStrategy
   detach(): void {
     this._detachStyleTag();
 
+    // Memory cleanup: Clear map and nullify references
+    this._heights.clear();
+    this._tracks = [];
+    this._accumulatedTrackOffsets = [];
+    this._lastRenderedRange = new Range(-1, -1);
+    this._lastRenderedAssetRange = new Range(-1, -1);
+
     this._viewport = null;
     this._wrapper = null;
   }
 
   private _detachStyleTag() {
-    if (this._styleElement !== undefined) this._styleElement.remove();
+    if (this._styleElement !== undefined) {
+      this._styleElement.remove();
+      this._styleElement = undefined; // Nullify to help GC
+    }
   }
 
   onContentScrolled(): void {
@@ -246,6 +256,10 @@ export class ExampleBasedVirtualScrollStrategy
     const offsets = this._accumulatedTrackOffsets;
     if (offsets.length <= 1) return 0;
 
+    // Early exit for common cases
+    if (offset <= 0) return 0;
+    if (offset >= offsets[offsets.length - 1]) return offsets.length - 2;
+
     // accumulation adds an element
     let high = offsets.length - 2;
     let low = 0;
@@ -426,11 +440,13 @@ export class ExampleBasedVirtualScrollStrategy
 
     if (!this._viewport) return;
 
-    this._viewport.setRenderedRange(range);
-    this._viewport.setRenderedContentOffset(this._offset(range.start));
-
+    // first trigger asset update 'callbacks'
     this._scrolledIndex.set(offsetScrollIndex);
     this.emitRenderedRangeChange(range);
     this.emitRenderedAssetRangeChange(assetRange);
+
+    // second update scroller content
+    this._viewport.setRenderedRange(range);
+    this._viewport.setRenderedContentOffset(this._offset(range.start));
   }
 }
