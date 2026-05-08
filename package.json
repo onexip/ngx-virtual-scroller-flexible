@@ -1,6 +1,6 @@
 {
   "name": "@onexip/ngx-virtual-scroller-flexible",
-  "version": "21.0.13",
+  "version": "21.0.15",
   "scripts": {
     "ng": "ng",
     "start": "ng serve",
