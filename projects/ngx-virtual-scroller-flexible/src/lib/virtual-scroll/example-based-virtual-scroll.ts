@@ -32,6 +32,15 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   public onScrolledToEnd?: () => void;
   public onScrolledToStart?: () => void;
 
+  /**
+   * Optional callback that returns the latest tracks from the directive's
+   * signal input. When set, `onDataLengthChanged()` reads it to sync `_tracks`
+   * before recalculating — this avoids a timing issue where CDK fires
+   * `onDataLengthChanged()` during change detection but the directive's effect
+   * (which calls `updateTracks`) only runs after CD.
+   */
+  public tracksSource?: () => Track[];
+
   private _styleElement?: HTMLStyleElement;
   private _lastScrollOffset: number = 0;
   private _forwardScroll: boolean = true;
@@ -39,6 +48,7 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   private _lastScrolledToStart = false;
   private _lastRenderedRange: Range = new Range(-1, -1);
   private _lastRenderedAssetRange: Range = new Range(-1, -1);
+  private _pendingRemeasure: number | null = null;
 
   private _viewport!: CdkVirtualScrollViewport | null;
   private _wrapper!: ChildNode | null;
@@ -70,6 +80,12 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   detach(): void {
     this._detachStyleTag();
 
+    // Cancel pending remeasure
+    if (this._pendingRemeasure !== null) {
+      cancelAnimationFrame(this._pendingRemeasure);
+      this._pendingRemeasure = null;
+    }
+
     // Memory cleanup: Clear map and nullify references
     this._heights.clear();
     this._tracks = [];
@@ -95,6 +111,16 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   }
 
   onDataLengthChanged(): void {
+    // If a tracks source is wired, sync tracks before recalculating.
+    // This ensures _tracks matches CDK's current data even when the
+    // directive's effect has not yet run.
+    if (this.tracksSource) {
+      const latest = this.tracksSource();
+      const tracks_ =
+        this.invertedScrolling === true ? [...latest].reverse() : latest;
+      this._tracks = tracks_;
+    }
+
     this._updateExampleHeights(true);
     this._updateRenderedRange();
   }
@@ -384,11 +410,47 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
 
       this._viewport.setTotalContentSize(this._totalHeight);
       this._updateMaskStyles();
-
-      // Example sizes changed — this should only happen when the scroller's dimensions change.
     }
 
+    // Check if any track sizeId is still unmeasured. This happens when
+    // example DOM elements haven't been rendered yet (e.g. the @for loop
+    // creating size examples runs after CDK fires onDataLengthChanged).
+    // Schedule a single rAF to retry once the browser has laid out the
+    // new elements.
+    this._scheduleRemeasureIfNeeded();
+
     return sizesChanged;
+  }
+
+  /**
+   * If any track in `_tracks` has a sizeId not yet present in the heights
+   * cache, schedule a `requestAnimationFrame` to re-measure and recalculate
+   * the rendered range. This handles the case where new example elements
+   * haven't been laid out yet when `_updateExampleHeights` first runs.
+   */
+  private _scheduleRemeasureIfNeeded() {
+    if (!this._viewport) return;
+
+    const hasMissing = this._tracks.some((t) => !this._heights.has(t.sizeId()));
+
+    if (!hasMissing) {
+      // All sizeIds are measured — cancel any pending retry.
+      if (this._pendingRemeasure !== null) {
+        cancelAnimationFrame(this._pendingRemeasure);
+        this._pendingRemeasure = null;
+      }
+      return;
+    }
+
+    // Already scheduled — don't stack.
+    if (this._pendingRemeasure !== null) return;
+
+    this._pendingRemeasure = requestAnimationFrame(() => {
+      this._pendingRemeasure = null;
+      if (!this._viewport) return;
+      this._updateExampleHeights(true);
+      this._updateRenderedRange();
+    });
   }
 
   /**

@@ -122,6 +122,10 @@ export class ExampleBasedVirtualScrollDirective {
     this._scrollStrategy.onScrolledToEnd = () => this.scrolledToEnd.emit();
     this._scrollStrategy.onScrolledToStart = () => this.scrolledToStart.emit();
 
+    // Allow the strategy to read the current tracks synchronously during
+    // onDataLengthChanged (which fires during CD, before effects run).
+    this._scrollStrategy.tracksSource = () => this.tracks();
+
     // Sync signal inputs → strategy properties via effects.
     // Use untracked for the strategy call so that any signals read inside
     // updateTracks (e.g. _scrolledIndex) do NOT become dependencies of this
