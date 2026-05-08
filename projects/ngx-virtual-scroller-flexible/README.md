@@ -4,15 +4,15 @@ The `ngx-virtual-scroller-flexible` is an ultra fast and flexible virtual scroll
 
 ## Approach
 
-This virtualer scroller library displays a virtual, "infinite" list which supports showing an unlimited number of items (e.g. images) without increasing the DOM and the memory usage. Its perfect to show images in images galleries or products in online shops. "ngx-virtual-scroller-flexible" supports variable heights of items and multi-column layouts.
+This virtual scroller library displays a virtual, "infinite" list which supports showing an unlimited number of items (e.g. images) without increasing the DOM and the memory usage. It's perfect to show images in image galleries or products in online shops. "ngx-virtual-scroller-flexible" supports variable heights of items and multi-column layouts.
 
 ## License
 
-This library is license under [GPL](https://de.wikipedia.org/wiki/GNU_General_Public_License) and can be used for free in non-commercial open source products. Please contact us if you wan't to use this library in commercial applications.
+This library is licensed under [GPL](https://de.wikipedia.org/wiki/GNU_General_Public_License) and can be used for free in non-commercial open source products. Please contact us if you want to use this library in commercial applications.
 
 ## Copyright
 
-(c) 2024-2025 onexip GmbH. https://www.onexip.com
+(c) 2024-2026 onexip GmbH. https://www.onexip.com
 
 
 
@@ -61,3 +61,37 @@ There you can see how to use the component with all it's features.
 ## Version Hints
 - 1.0.0 - 1.0.3, 1.0.5 = Angular 19
 - 1.0.4, 1.0.6, 1.0.7 = Angular 20
+- 20.x = Angular 20 (major-aligned versioning)
+- 21.x = Angular 21
+
+## Migration from 1.0.x to 20.x / 21.x
+
+Starting with version 20.0.0, the library follows **Angular-major-aligned versioning** — the library major version matches the Angular major version it targets.
+
+### Breaking Changes
+
+#### Signal-based API
+
+All `@Input()` / `@Output()` decorators have been replaced with Angular's signal-based API (`input()`, `output()`, `model()`). If you were passing inputs programmatically via `component.someInput = value`, update to use the signal write API or template bindings. Template usage (`[input]="value"` / `(output)="handler($event)"`) continues to work unchanged.
+
+#### `InfiniteScrollEndComponent` — `(endReached)` removed
+
+The `(endReached)` output and `[earlyTriggerFactor]` input have been removed from `InfiniteScrollEndComponent`. Scroll-end detection now lives in the directive itself:
+
+```html
+<!-- Before (1.0.x) -->
+<infinite-scroll-end [loading]="loading" (endReached)="onEnd()"></infinite-scroll-end>
+
+<!-- After (20.x / 21.x) -->
+<div [exampleBasedVirtualScroll]="strategy" (scrolledToEnd)="onEnd()">
+  ...
+  <infinite-scroll-end [loading]="loading"></infinite-scroll-end>
+</div>
+```
+
+#### New features
+
+- `(scrolledToEnd)` / `(scrolledToStart)` outputs on the directive
+- `[invertedScrolling]` input for bottom-to-top scroll order
+- `resetScrollEndDetection()` method on the directive to re-arm the end trigger
+- `switchToIndex()` on the strategy for scroll-position locking (e.g. after prepending items)

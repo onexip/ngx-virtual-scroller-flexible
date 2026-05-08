@@ -38,6 +38,9 @@ yarn-error.log
 testem.log
 /typings
 
+# Build artifacts
+*.tgz
+
 # System files
 .DS_Store
 Thumbs.db

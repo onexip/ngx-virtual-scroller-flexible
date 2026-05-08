@@ -2,18 +2,21 @@ import {
   CdkVirtualScrollViewport,
   VirtualScrollStrategy,
 } from '@angular/cdk/scrolling';
-import { computed, EventEmitter, signal } from '@angular/core';
+import { computed, signal } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
-import { distinctUntilChanged, lastValueFrom, Observable, Subject } from 'rxjs';
+import { distinctUntilChanged } from 'rxjs';
 import { Range, updatedRange } from './range';
 import { Track } from './types';
 
-export class ExampleBasedVirtualScrollStrategy
-  implements VirtualScrollStrategy
-{
+// TODO:
+// computed for tracks that is reversed on invertedScroll
+// css flex used to change reading direction/flip left/right
+// i always need to start at the bottom/last index
+
+export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy {
   private _scrolledIndex = signal<number>(0);
   scrolledIndexChange = toObservable(
-    computed(() => this._scrolledIndex())
+    computed(() => this._scrolledIndex()),
   ).pipe(distinctUntilChanged());
 
   // public properties through scroll directive
@@ -21,13 +24,19 @@ export class ExampleBasedVirtualScrollStrategy
   public outgoingBufferFactor: number = 0.0;
   public incomingBufferFactor: number = 0.8;
   public incomingAssetPreparationFactor: number = 2;
-  public resized?: EventEmitter<DOMRectReadOnly>;
-  public renderedRangeChange?: EventEmitter<Range>;
-  public renderedAssetRangeChange?: EventEmitter<Range>;
+  public invertedScrolling?: boolean = false;
+
+  // callbacks wired by the directive
+  public onRenderedRangeChange?: (range: Range) => void;
+  public onRenderedAssetRangeChange?: (range: Range) => void;
+  public onScrolledToEnd?: () => void;
+  public onScrolledToStart?: () => void;
 
   private _styleElement?: HTMLStyleElement;
   private _lastScrollOffset: number = 0;
   private _forwardScroll: boolean = true;
+  private _lastScrolledToEnd = false;
+  private _lastScrolledToStart = false;
   private _lastRenderedRange: Range = new Range(-1, -1);
   private _lastRenderedAssetRange: Range = new Range(-1, -1);
 
@@ -43,6 +52,9 @@ export class ExampleBasedVirtualScrollStrategy
     this._viewport = viewport;
     this._wrapper = viewport.getElementRef().nativeElement.childNodes[0];
     this._attachStyleTag(this._viewport.getElementRef().nativeElement);
+
+    if (this.invertedScrolling === true)
+      this._scrolledIndex.set(this._tracks.length);
 
     this._updateExampleHeights(true);
     this._updateRenderedRange();
@@ -64,6 +76,8 @@ export class ExampleBasedVirtualScrollStrategy
     this._accumulatedTrackOffsets = [];
     this._lastRenderedRange = new Range(-1, -1);
     this._lastRenderedAssetRange = new Range(-1, -1);
+    this._lastScrolledToEnd = false;
+    this._lastScrolledToStart = false;
 
     this._viewport = null;
     this._wrapper = null;
@@ -95,8 +109,9 @@ export class ExampleBasedVirtualScrollStrategy
 
   emitRenderedRangeChange(range: Range) {
     if (!this._lastRenderedRange || !this._lastRenderedRange.equals(range)) {
-      if (this.renderedRangeChange) this.renderedRangeChange.emit(range);
-      else throw Error('Event emitter undefined.');
+      if (!this.onRenderedRangeChange)
+        throw Error('onRenderedRangeChange callback undefined.');
+      this.onRenderedRangeChange(range);
       this._lastRenderedRange = range;
     }
   }
@@ -106,9 +121,9 @@ export class ExampleBasedVirtualScrollStrategy
       !this._lastRenderedAssetRange ||
       !this._lastRenderedAssetRange.equals(range)
     ) {
-      if (this.renderedAssetRangeChange)
-        this.renderedAssetRangeChange.emit(range);
-      else throw Error('Event emitter undefined.');
+      if (!this.onRenderedAssetRangeChange)
+        throw Error('onRenderedAssetRangeChange callback undefined.');
+      this.onRenderedAssetRangeChange(range);
       this._lastRenderedAssetRange = range;
     }
   }
@@ -144,20 +159,35 @@ export class ExampleBasedVirtualScrollStrategy
    * @param tracks
    */
   updateTracks(tracks: Track[]): void {
+    const tracks_ =
+      this.invertedScrolling === true ? [...tracks].reverse() : tracks;
+
     const currentIndex = this._scrolledIndex();
     const isValidIndex = 0 < currentIndex && currentIndex < this._tracks.length;
 
     const nextIndex = isValidIndex
-      ? tracks.findIndex(
-          (track) => track.trackId() === this._tracks[currentIndex].trackId()
+      ? tracks_.findIndex(
+          (track) => track.trackId() === this._tracks[currentIndex].trackId(),
         )
       : -1;
 
-    this._tracks = tracks;
+    this._tracks = tracks_;
 
     this._viewport?.checkViewportSize();
 
     if (nextIndex > 0) this.switchToIndex(nextIndex);
+  }
+
+  /**
+   * Resets scroll-end (and scroll-start) detection and immediately re-evaluates
+   * the current scroll position. Use this after a failed data load so the
+   * end-of-list event can re-fire and trigger a retry, even when the user has
+   * not scrolled.
+   */
+  resetScrollEndDetection() {
+    this._lastScrolledToEnd = false;
+    this._lastScrolledToStart = false;
+    this._updateRenderedRange();
   }
 
   /**
@@ -312,7 +342,7 @@ export class ExampleBasedVirtualScrollStrategy
    * @returns true if any height changed
    */
   private _updateExampleHeights(
-    accumulatedSizesChanged: boolean = false
+    accumulatedSizesChanged: boolean = false,
   ): boolean {
     if (!this._wrapper || !this._viewport) return false;
 
@@ -355,10 +385,7 @@ export class ExampleBasedVirtualScrollStrategy
       this._viewport.setTotalContentSize(this._totalHeight);
       this._updateMaskStyles();
 
-      if (!accumulatedSizesChanged)
-        console.log(
-          'Example sizes changed - this should only happen when the dimensions of the scroller change.'
-        );
+      // Example sizes changed — this should only happen when the scroller's dimensions change.
     }
 
     return sizesChanged;
@@ -373,7 +400,7 @@ export class ExampleBasedVirtualScrollStrategy
     const css = Array.from(this._heights.entries())
       .map(
         ([id, height]) =>
-          `.mask-size-id-${id} { --measured-mask-size: ${height}px; }`
+          `.mask-size-id-${id} { --measured-mask-size: ${height}px; }`,
       )
       .join('\n');
 
@@ -416,7 +443,7 @@ export class ExampleBasedVirtualScrollStrategy
 
       this._viewport.scrollToOffset(
         viewportOffset + newScrollOffset,
-        'instant'
+        'instant',
       );
     }
 
@@ -427,7 +454,7 @@ export class ExampleBasedVirtualScrollStrategy
       totalTrackCount,
       this._forwardScroll,
       this.outgoingBufferFactor,
-      this.incomingBufferFactor
+      this.incomingBufferFactor,
     );
     const assetRange = updatedRange(
       scrollIndex,
@@ -435,7 +462,7 @@ export class ExampleBasedVirtualScrollStrategy
       totalTrackCount,
       this._forwardScroll,
       this.outgoingBufferFactor,
-      this.incomingAssetPreparationFactor
+      this.incomingAssetPreparationFactor,
     );
 
     if (!this._viewport) return;
@@ -444,6 +471,14 @@ export class ExampleBasedVirtualScrollStrategy
     this._scrolledIndex.set(offsetScrollIndex);
     this.emitRenderedRangeChange(range);
     this.emitRenderedAssetRangeChange(assetRange);
+
+    // scroll end/start detection — emits once each time the boundary is entered/left
+    const nowAtEnd = totalTrackCount > 0 && assetRange.end >= totalTrackCount;
+    const nowAtStart = totalTrackCount > 0 && assetRange.start <= 0;
+    if (nowAtEnd && !this._lastScrolledToEnd) this.onScrolledToEnd?.();
+    if (nowAtStart && !this._lastScrolledToStart) this.onScrolledToStart?.();
+    this._lastScrolledToEnd = nowAtEnd;
+    this._lastScrolledToStart = nowAtStart;
 
     // second update scroller content
     this._viewport.setRenderedRange(range);

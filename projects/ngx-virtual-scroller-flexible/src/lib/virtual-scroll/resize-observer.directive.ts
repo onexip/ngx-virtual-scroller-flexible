@@ -1,41 +1,35 @@
 import {
+  afterNextRender,
+  DestroyRef,
   Directive,
   ElementRef,
-  EventEmitter,
-  OnDestroy,
-  OnInit,
-  Output,
+  inject,
+  output,
 } from '@angular/core';
 
 @Directive({
   selector: '[appResizeObserver]',
   standalone: true,
 })
-export class ResizeObserverDirective implements OnInit, OnDestroy {
+export class ResizeObserverDirective {
   /**
    * Emits the contentRect (DOMRectReadOnly) of the observed element
    * whenever a resize occurs.
    */
-  @Output() resized = new EventEmitter<DOMRectReadOnly>();
+  readonly resized = output<DOMRectReadOnly>();
 
-  private resizeObserver: ResizeObserver | null = null;
+  private readonly _elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly _destroyRef = inject(DestroyRef);
 
-  constructor(private elementRef: ElementRef) {}
-
-  ngOnInit() {
-    this.resizeObserver = new ResizeObserver((entries) => {
-      if (entries.length > 0) {
-        this.resized.emit(entries[0].contentRect);
-      }
+  constructor() {
+    afterNextRender(() => {
+      const observer = new ResizeObserver((entries) => {
+        if (entries.length > 0) {
+          this.resized.emit(entries[0].contentRect);
+        }
+      });
+      observer.observe(this._elementRef.nativeElement);
+      this._destroyRef.onDestroy(() => observer.disconnect());
     });
-
-    this.resizeObserver.observe(this.elementRef.nativeElement);
-  }
-
-  ngOnDestroy() {
-    if (this.resizeObserver) {
-      this.resizeObserver.disconnect();
-      this.resizeObserver = null;
-    }
   }
 }
