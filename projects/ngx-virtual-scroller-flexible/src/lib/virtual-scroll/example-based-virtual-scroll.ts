@@ -8,11 +8,6 @@ import { distinctUntilChanged } from 'rxjs';
 import { Range, updatedRange } from './range';
 import { Track } from './types';
 
-// TODO:
-// computed for tracks that is reversed on invertedScroll
-// css flex used to change reading direction/flip left/right
-// i always need to start at the bottom/last index
-
 export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy {
   private _scrolledIndex = signal<number>(0);
   scrolledIndexChange = toObservable(
@@ -35,7 +30,7 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   /**
    * Optional callback that returns the latest tracks from the directive's
    * signal input. When set, `onDataLengthChanged()` reads it to sync `_tracks`
-   * before recalculating — this avoids a timing issue where CDK fires
+   * before scheduling measurement — this avoids a timing issue where CDK fires
    * `onDataLengthChanged()` during change detection but the directive's effect
    * (which calls `updateTracks`) only runs after CD.
    */
@@ -48,10 +43,11 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   private _lastScrolledToStart = false;
   private _lastRenderedRange: Range = new Range(-1, -1);
   private _lastRenderedAssetRange: Range = new Range(-1, -1);
-  private _pendingRemeasure: number | null = null;
+  private _pendingMeasure: number | null = null;
 
   private _viewport!: CdkVirtualScrollViewport | null;
   private _wrapper!: ChildNode | null;
+  private _resizeObserver: ResizeObserver | null = null;
 
   private _tracks: Track[] = [];
   private _accumulatedTrackOffsets: number[] = [];
@@ -66,8 +62,19 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
     if (this.invertedScrolling === true)
       this._scrolledIndex.set(this._tracks.length);
 
+    // Observe the wrapper for size changes (e.g. container resize, orientation
+    // change) so example heights are re-measured without relying on scroll
+    // events.
+    this._observeWrapperResize();
+
+    // Measure example heights synchronously. Newly created examples may
+    // report 0 — that's intentional: 0-height tracks all "fit" in the
+    // viewport, so CDK renders everything and content is immediately visible.
+    // The deferred rAF then measures accurate CSS-driven heights and corrects
+    // the total content size and rendered range.
     this._updateExampleHeights(true);
     this._updateRenderedRange();
+    this._deferredMeasure();
   }
 
   private _attachStyleTag(container: HTMLElement) {
@@ -80,10 +87,16 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   detach(): void {
     this._detachStyleTag();
 
-    // Cancel pending remeasure
-    if (this._pendingRemeasure !== null) {
-      cancelAnimationFrame(this._pendingRemeasure);
-      this._pendingRemeasure = null;
+    // Cancel pending measure
+    if (this._pendingMeasure !== null) {
+      cancelAnimationFrame(this._pendingMeasure);
+      this._pendingMeasure = null;
+    }
+
+    // Disconnect resize observer
+    if (this._resizeObserver !== null) {
+      this._resizeObserver.disconnect();
+      this._resizeObserver = null;
     }
 
     // Memory cleanup: Clear map and nullify references
@@ -102,7 +115,7 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   private _detachStyleTag() {
     if (this._styleElement !== undefined) {
       this._styleElement.remove();
-      this._styleElement = undefined; // Nullify to help GC
+      this._styleElement = undefined;
     }
   }
 
@@ -111,18 +124,21 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   }
 
   onDataLengthChanged(): void {
-    // If a tracks source is wired, sync tracks before recalculating.
-    // This ensures _tracks matches CDK's current data even when the
-    // directive's effect has not yet run.
+    // Sync tracks from the directive's signal so _tracks matches CDK's
+    // current data length, even when the directive's effect hasn't run yet.
     if (this.tracksSource) {
       const latest = this.tracksSource();
-      const tracks_ =
+      this._tracks =
         this.invertedScrolling === true ? [...latest].reverse() : latest;
-      this._tracks = tracks_;
     }
 
+    // Measure example heights synchronously. Newly created examples may
+    // report 0 — that's intentional: 0-height tracks all "fit" in the
+    // viewport, so CDK renders everything and content is immediately visible.
+    // The deferred rAF then measures accurate CSS-driven heights and corrects.
     this._updateExampleHeights(true);
     this._updateRenderedRange();
+    this._deferredMeasure();
   }
 
   onContentRendered(): void {
@@ -181,8 +197,6 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
 
   /**
    * Update the tracks array. Keep the last track in view when possible.
-   *
-   * @param tracks
    */
   updateTracks(tracks: Track[]): void {
     const tracks_ =
@@ -199,6 +213,9 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
 
     this._tracks = tracks_;
 
+    // Notify CDK of the new data length. This calls onDataLengthChanged()
+    // which now only syncs tracks and schedules a deferred measure — no
+    // synchronous measurement during CD.
     this._viewport?.checkViewportSize();
 
     if (nextIndex > 0) this.switchToIndex(nextIndex);
@@ -217,10 +234,10 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   }
 
   /**
-   * Update the measured example sizes.
+   * Update the measured example sizes via a deferred measurement.
    */
   remeasureExampleSizes() {
-    if (this._viewport) this._viewport.checkViewportSize();
+    this._deferredMeasure();
   }
 
   /**
@@ -271,21 +288,17 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   }
 
   /**
-   * Returns the height of a given track from the heights cache. Returns
-   * Infinity if height for size id is missing.
+   * Returns the height of a given track from the heights cache.
    *
-   * @param track
-   * @returns
+   * Falls back to the viewport height for unmeasured sizeIds so that at most
+   * one track is assumed visible. This keeps CDK in a valid state while the
+   * deferred measurement picks up the real CSS-driven heights after the
+   * browser has laid out the example elements.
    */
   private _height(track: Track): number {
     const cachedHeight = this._heights.get(track.sizeId());
-
     if (cachedHeight !== undefined) return cachedHeight;
-
-    // If new tracks with not yet measured size-ids where added, then Infinity
-    // makes it so that the scroller assumes, that only one Element is currently
-    // visible.
-    return Infinity;
+    return this._viewport?.getViewportSize() || 1000;
   }
 
   /**
@@ -362,8 +375,8 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   }
 
   /**
-   * Update the height cache with the actual height of the rendered track
-   * components.
+   * Update the height cache with the actual height of the rendered example
+   * track elements.
    *
    * @returns true if any height changed
    */
@@ -412,45 +425,7 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
       this._updateMaskStyles();
     }
 
-    // Check if any track sizeId is still unmeasured. This happens when
-    // example DOM elements haven't been rendered yet (e.g. the @for loop
-    // creating size examples runs after CDK fires onDataLengthChanged).
-    // Schedule a single rAF to retry once the browser has laid out the
-    // new elements.
-    this._scheduleRemeasureIfNeeded();
-
     return sizesChanged;
-  }
-
-  /**
-   * If any track in `_tracks` has a sizeId not yet present in the heights
-   * cache, schedule a `requestAnimationFrame` to re-measure and recalculate
-   * the rendered range. This handles the case where new example elements
-   * haven't been laid out yet when `_updateExampleHeights` first runs.
-   */
-  private _scheduleRemeasureIfNeeded() {
-    if (!this._viewport) return;
-
-    const hasMissing = this._tracks.some((t) => !this._heights.has(t.sizeId()));
-
-    if (!hasMissing) {
-      // All sizeIds are measured — cancel any pending retry.
-      if (this._pendingRemeasure !== null) {
-        cancelAnimationFrame(this._pendingRemeasure);
-        this._pendingRemeasure = null;
-      }
-      return;
-    }
-
-    // Already scheduled — don't stack.
-    if (this._pendingRemeasure !== null) return;
-
-    this._pendingRemeasure = requestAnimationFrame(() => {
-      this._pendingRemeasure = null;
-      if (!this._viewport) return;
-      this._updateExampleHeights(true);
-      this._updateRenderedRange();
-    });
   }
 
   /**
@@ -480,9 +455,9 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   }
 
   /**
-   * Update the range of rendered tracks.
-   *
-   * @returns
+   * Update the range of rendered tracks based on the current scroll position
+   * and cached example heights. Does NOT re-measure example heights — that
+   * is done exclusively by `_deferredMeasure()`.
    */
   private _updateRenderedRange() {
     if (!this._viewport) return;
@@ -493,21 +468,8 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
 
     const offsetScrollIndex = this._trackIndex(viewportOffset + scrollOffset);
     const totalTrackCount = this._viewport.getDataLength();
-    const oldTotalHeight = this._totalHeight;
 
     this._updateScrollDirection();
-    const changedHeight = this._updateExampleHeights();
-
-    if (changedHeight) {
-      const newTotalHeight = this._totalHeight;
-      const sizeChangeFactor = newTotalHeight / oldTotalHeight;
-      const newScrollOffset = scrollOffset * sizeChangeFactor;
-
-      this._viewport.scrollToOffset(
-        viewportOffset + newScrollOffset,
-        'instant',
-      );
-    }
 
     const visibleTrackCount = this._maxVisibleTrackCount(scrollIndex);
     const range = updatedRange(
@@ -545,5 +507,44 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
     // second update scroller content
     this._viewport.setRenderedRange(range);
     this._viewport.setRenderedContentOffset(this._offset(range.start));
+  }
+
+  /**
+   * Schedules a single deferred measurement frame. All callers coalesce into
+   * one rAF so that no matter how many updates arrive during a single CD
+   * cycle (attach, onDataLengthChanged, updateTracks), the browser gets
+   * exactly one layout-read after it has committed the DOM.
+   */
+  private _deferredMeasure() {
+    if (!this._viewport) return;
+    if (this._pendingMeasure !== null) return; // already scheduled
+
+    this._pendingMeasure = requestAnimationFrame(() => {
+      this._pendingMeasure = null;
+      if (!this._viewport) return;
+
+      this._updateExampleHeights(true);
+      this._updateRenderedRange();
+    });
+  }
+
+  /**
+   * Observes the CDK wrapper element for size changes so example heights are
+   * re-measured on container resize (e.g. orientation change, column count
+   * change) without relying on scroll events.
+   */
+  private _observeWrapperResize() {
+    if (!this._wrapper || this._resizeObserver) return;
+
+    const parent = (this._wrapper as HTMLElement).parentElement;
+    if (!parent) return;
+
+    this._resizeObserver = new ResizeObserver(() => {
+      // Invalidate cached heights — the container width changed so
+      // CSS-driven row heights will be different.
+      this._heights.clear();
+      this._deferredMeasure();
+    });
+    this._resizeObserver.observe(parent);
   }
 }

@@ -167,9 +167,7 @@ export class ExampleBasedVirtualScrollDirective {
 
     effect(() => {
       if (this.triggerRemeasure()) {
-        requestAnimationFrame(() =>
-          this._scrollStrategy.remeasureExampleSizes(),
-        );
+        this._scrollStrategy.remeasureExampleSizes();
       }
     });
   }
