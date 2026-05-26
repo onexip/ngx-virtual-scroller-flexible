@@ -48,6 +48,7 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   private _viewport!: CdkVirtualScrollViewport | null;
   private _wrapper!: ChildNode | null;
   private _resizeObserver: ResizeObserver | null = null;
+  private _refreshingViewportSize = false;
 
   private _tracks: Track[] = [];
   private _accumulatedTrackOffsets: number[] = [];
@@ -124,6 +125,12 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   }
 
   onDataLengthChanged(): void {
+    // checkViewportSize() calls onDataLengthChanged(). When invoked from
+    // _deferredMeasure just to refresh the cached viewport size, skip the
+    // full handler — _deferredMeasure already handles measurement and
+    // range updates itself.
+    if (this._refreshingViewportSize) return;
+
     // Sync tracks from the directive's signal so _tracks matches CDK's
     // current data length, even when the directive's effect hasn't run yet.
     if (this.tracksSource) {
@@ -522,6 +529,16 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
     this._pendingMeasure = requestAnimationFrame(() => {
       this._pendingMeasure = null;
       if (!this._viewport) return;
+
+      // Force CDK to re-read the scrollable element's clientHeight.
+      // In zoneless / OnPush apps, ngDoCheck (which normally refreshes
+      // the cached viewport size) may not have run since the last browser
+      // layout. checkViewportSize() also calls onDataLengthChanged() on
+      // this strategy — the _refreshingViewportSize guard prevents that
+      // from re-entering _deferredMeasure.
+      this._refreshingViewportSize = true;
+      this._viewport.checkViewportSize();
+      this._refreshingViewportSize = false;
 
       this._updateExampleHeights(true);
       this._updateRenderedRange();
