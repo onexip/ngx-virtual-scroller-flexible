@@ -227,7 +227,7 @@ A full working example is included in the source under [`src/example-usage/`](pr
 
 ## License
 
-This library is licensed under [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) and can be used for free in non-commercial open source products. Please [contact us](https://www.onexip.com) if you want to use this library in commercial applications.
+[MIT](LICENSE)
 
 ## Copyright
 
