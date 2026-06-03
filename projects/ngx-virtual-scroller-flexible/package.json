@@ -1,6 +1,6 @@
 {
   "name": "@onexip/ngx-virtual-scroller-flexible",
-  "version": "21.0.17",
+  "version": "21.0.18",
   "peerDependencies": {
     "@angular/cdk": "^20.0.0 || ^21.0.0",
     "@angular/common": "^20.0.0 || ^21.0.0",
@@ -20,7 +20,7 @@
     "scroller"
   ],
   "author": "onexip",
-  "license": "MIT",
+  "license": "MIT OR GPL-3.0-only",
   "bugs": {
     "url": "https://github.com/onexip/ngx-virtual-scroller-flexible/issues"
   },

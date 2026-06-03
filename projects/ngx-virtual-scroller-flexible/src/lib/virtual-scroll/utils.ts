@@ -10,7 +10,7 @@ import { Track } from './types';
  */
 export function distinctSizeIds(
   tracks: Track[],
-  expectedCount?: number
+  expectedCount?: number,
 ): Track[] {
   const distinct = new Set<string>();
   const filtered: Track[] = [];
@@ -25,9 +25,6 @@ export function distinctSizeIds(
 
     if (expectedCount !== undefined && filtered.length >= expectedCount) break;
   }
-
-  // Clear Set to help GC - important when called frequently
-  distinct.clear();
 
   return filtered;
 }
@@ -52,7 +49,7 @@ export function gridTracks<T>(elements: T[], orthogonalCount: number) {
   const trackCount = Math.ceil(elements.length / orthogonalCount);
 
   return Array.from({ length: trackCount }, (_, i) =>
-    elements.slice(i * orthogonalCount, (i + 1) * orthogonalCount)
+    elements.slice(i * orthogonalCount, (i + 1) * orthogonalCount),
   );
 }
 
@@ -69,7 +66,7 @@ export function gridTracks<T>(elements: T[], orthogonalCount: number) {
  */
 export function responsiveOrthogonalTrackCount(
   breakpoints: number[],
-  containerSize: number
+  containerSize: number,
 ) {
   return (
     breakpoints.findIndex((breakpoint) => containerSize < breakpoint) + 1 ||

@@ -3,5 +3,12 @@
   "dest": "../../dist/ngx-virtual-scroller-flexible",
   "lib": {
     "entryFile": "src/public-api.ts"
-  }
+  },
+  "assets": [
+    {
+      "glob": "LICENSE*",
+      "input": ".",
+      "output": "."
+    }
+  ]
 }

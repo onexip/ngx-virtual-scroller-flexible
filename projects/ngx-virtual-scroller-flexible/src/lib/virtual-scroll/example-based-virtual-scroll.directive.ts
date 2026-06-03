@@ -85,6 +85,16 @@ export class ExampleBasedVirtualScrollDirective {
   readonly invertedScrolling = input<boolean>(false);
 
   /**
+   * Enables the asset preparation range, which extends further than the render
+   * range to allow pre-loading of assets (images, etc.). Bind
+   * `(renderedAssetRangeChange)` to receive the extended range. Disable when
+   * not needed to skip the extra computation on every scroll event.
+   *
+   * Default: true
+   */
+  readonly enableAssetRange = input<boolean>(true);
+
+  /**
    * Triggers example size remeasurement when set to true.
    */
   readonly triggerRemeasure = input<boolean>(false);
@@ -117,8 +127,6 @@ export class ExampleBasedVirtualScrollDirective {
     // Wire strategy callbacks to signal outputs.
     this._scrollStrategy.onRenderedRangeChange = (range) =>
       this.renderedRangeChange.emit(range);
-    this._scrollStrategy.onRenderedAssetRangeChange = (range) =>
-      this.renderedAssetRangeChange.emit(range);
     this._scrollStrategy.onScrolledToEnd = () => this.scrolledToEnd.emit();
     this._scrollStrategy.onScrolledToStart = () => this.scrolledToStart.emit();
 
@@ -163,6 +171,12 @@ export class ExampleBasedVirtualScrollDirective {
 
     effect(() => {
       this._scrollStrategy.invertedScrolling = this.invertedScrolling();
+    });
+
+    effect(() => {
+      this._scrollStrategy.onRenderedAssetRangeChange = this.enableAssetRange()
+        ? (range) => this.renderedAssetRangeChange.emit(range)
+        : undefined;
     });
 
     effect(() => {

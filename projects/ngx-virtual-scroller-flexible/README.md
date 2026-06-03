@@ -290,7 +290,12 @@ npm install && npm start
 
 ## License
 
-This library is licensed under [GPL-3.0](https://www.gnu.org/licenses/gpl-3.0.html) and can be used for free in non-commercial open source products. Please [contact us](https://www.onexip.com) if you want to use this library in commercial applications.
+Dual-licensed under your choice of either:
+
+- [MIT](LICENSE-MIT) — permissive use, including commercial and closed-source applications.
+- [GPL-3.0-only](LICENSE-GPL-3.0) — copyleft use for GPL-compatible projects.
+
+The npm package metadata uses `MIT OR GPL-3.0-only`, so consumers may choose the MIT license.
 
 ## Copyright
 

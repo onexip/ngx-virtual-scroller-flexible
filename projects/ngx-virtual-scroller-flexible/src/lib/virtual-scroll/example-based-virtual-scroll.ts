@@ -5,7 +5,7 @@ import {
 import { computed, signal } from '@angular/core';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { distinctUntilChanged } from 'rxjs';
-import { Range, updatedRange } from './range';
+import { Range } from './range';
 import { Track } from './types';
 
 export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy {
@@ -49,6 +49,7 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   private _wrapper!: ChildNode | null;
   private _resizeObserver: ResizeObserver | null = null;
   private _refreshingViewportSize = false;
+  private _updatingTracks = false;
 
   private _tracks: Track[] = [];
   private _accumulatedTrackOffsets: number[] = [];
@@ -133,7 +134,8 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
 
     // Sync tracks from the directive's signal so _tracks matches CDK's
     // current data length, even when the directive's effect hasn't run yet.
-    if (this.tracksSource) {
+    // Skip when called from updateTracks — tracks are already set there.
+    if (!this._updatingTracks && this.tracksSource) {
       const latest = this.tracksSource();
       this._tracks =
         this.invertedScrolling === true ? [...latest].reverse() : latest;
@@ -222,8 +224,14 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
 
     // Notify CDK of the new data length. This calls onDataLengthChanged()
     // which now only syncs tracks and schedules a deferred measure — no
-    // synchronous measurement during CD.
-    this._viewport?.checkViewportSize();
+    // synchronous measurement during CD. The guard prevents
+    // onDataLengthChanged from re-reversing tracks already set above.
+    this._updatingTracks = true;
+    try {
+      this._viewport?.checkViewportSize();
+    } finally {
+      this._updatingTracks = false;
+    }
 
     if (nextIndex > 0) this.switchToIndex(nextIndex);
   }
@@ -252,13 +260,15 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
    */
   private _updateAccumulatedTrackOffsets() {
     const tracks = this._tracks;
+    const offsets = this._accumulatedTrackOffsets;
     let currentTotalSize = 0;
-    this._accumulatedTrackOffsets = [0];
+
+    offsets.length = tracks.length + 1;
+    offsets[0] = 0;
 
     for (let index = 0; index < tracks.length; index++) {
-      const track = tracks[index];
-      currentTotalSize += this._height(track);
-      this._accumulatedTrackOffsets.push(currentTotalSize);
+      currentTotalSize += this._height(tracks[index]);
+      offsets[index + 1] = currentTotalSize;
     }
   }
 
@@ -441,13 +451,11 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
    * These classes can be applied to elements to inherit the measured height.
    */
   private _buildMaskSizeStyles(): string {
-    const css = Array.from(this._heights.entries())
-      .map(
-        ([id, height]) =>
-          `.mask-size-id-${id} { --measured-mask-size: ${height}px; }`,
-      )
-      .join('\n');
-
+    let css = '';
+    for (const [id, height] of this._heights) {
+      if (css) css += '\n';
+      css += `.mask-size-id-${id} { --measured-mask-size: ${height}px; }`;
+    }
     return css;
   }
 
@@ -469,51 +477,148 @@ export class ExampleBasedVirtualScrollStrategy implements VirtualScrollStrategy 
   private _updateRenderedRange() {
     if (!this._viewport) return;
 
-    const viewportOffset = this._viewport.measureViewportOffset();
     const scrollOffset = this._viewport.measureScrollOffset();
     const scrollIndex = this._trackIndex(scrollOffset);
-
-    const offsetScrollIndex = this._trackIndex(viewportOffset + scrollOffset);
     const totalTrackCount = this._viewport.getDataLength();
 
     this._updateScrollDirection();
 
     const visibleTrackCount = this._maxVisibleTrackCount(scrollIndex);
-    const range = updatedRange(
+
+    const rangeStart = this._computeRangeStart(scrollIndex, visibleTrackCount);
+    const rangeEnd = this._computeRangeEnd(
       scrollIndex,
       visibleTrackCount,
       totalTrackCount,
-      this._forwardScroll,
-      this.outgoingBufferFactor,
-      this.incomingBufferFactor,
     );
-    const assetRange = updatedRange(
+
+    const viewportOffset = this._viewport.measureViewportOffset();
+    this._scrolledIndex.set(this._trackIndex(viewportOffset + scrollOffset));
+
+    this._emitRenderRange(rangeStart, rangeEnd);
+    this._emitAssetRange(scrollIndex, visibleTrackCount, totalTrackCount);
+    this._detectScrollBoundaries(
       scrollIndex,
       visibleTrackCount,
       totalTrackCount,
-      this._forwardScroll,
-      this.outgoingBufferFactor,
-      this.incomingAssetPreparationFactor,
     );
 
-    if (!this._viewport) return;
+    this._viewport.setRenderedRange(this._lastRenderedRange);
+    this._viewport.setRenderedContentOffset(this._offset(rangeStart));
+  }
 
-    // first trigger asset update 'callbacks'
-    this._scrolledIndex.set(offsetScrollIndex);
-    this.emitRenderedRangeChange(range);
-    this.emitRenderedAssetRangeChange(assetRange);
+  /** Compute the buffered start index for the rendered range. */
+  private _computeRangeStart(
+    scrollIndex: number,
+    visibleTrackCount: number,
+  ): number {
+    const buffer = this._forwardScroll
+      ? this.outgoingBufferFactor
+      : this.incomingBufferFactor;
+    return Math.max(0, scrollIndex - Math.ceil(buffer * visibleTrackCount));
+  }
 
-    // scroll end/start detection — emits once each time the boundary is entered/left
-    const nowAtEnd = totalTrackCount > 0 && assetRange.end >= totalTrackCount;
-    const nowAtStart = totalTrackCount > 0 && assetRange.start <= 0;
+  /** Compute the buffered end index for the rendered range. */
+  private _computeRangeEnd(
+    scrollIndex: number,
+    visibleTrackCount: number,
+    totalTrackCount: number,
+  ): number {
+    const buffer = this._forwardScroll
+      ? this.incomingBufferFactor
+      : this.outgoingBufferFactor;
+    return Math.min(
+      totalTrackCount,
+      scrollIndex +
+        1 +
+        visibleTrackCount +
+        Math.ceil(buffer * visibleTrackCount),
+    );
+  }
+
+  /** Emit render range only when it actually changed. */
+  private _emitRenderRange(start: number, end: number) {
+    if (
+      start !== this._lastRenderedRange.start ||
+      end !== this._lastRenderedRange.end
+    ) {
+      const range = new Range(start, end);
+      this.onRenderedRangeChange?.(range);
+      this._lastRenderedRange = range;
+    }
+  }
+
+  /** Compute and emit asset range if the callback is wired. */
+  private _emitAssetRange(
+    scrollIndex: number,
+    visibleTrackCount: number,
+    totalTrackCount: number,
+  ) {
+    if (!this.onRenderedAssetRangeChange) return;
+
+    const before = this._forwardScroll
+      ? this.outgoingBufferFactor
+      : this.incomingAssetPreparationFactor;
+    const after = this._forwardScroll
+      ? this.incomingAssetPreparationFactor
+      : this.outgoingBufferFactor;
+
+    const start = Math.max(
+      0,
+      scrollIndex - Math.ceil(before * visibleTrackCount),
+    );
+    const end = Math.min(
+      totalTrackCount,
+      scrollIndex +
+        1 +
+        visibleTrackCount +
+        Math.ceil(after * visibleTrackCount),
+    );
+
+    if (
+      start !== this._lastRenderedAssetRange.start ||
+      end !== this._lastRenderedAssetRange.end
+    ) {
+      const range = new Range(start, end);
+      this.onRenderedAssetRangeChange(range);
+      this._lastRenderedAssetRange = range;
+    }
+  }
+
+  /** Fire scroll-end / scroll-start callbacks using the asset preparation factor. */
+  private _detectScrollBoundaries(
+    scrollIndex: number,
+    visibleTrackCount: number,
+    totalTrackCount: number,
+  ) {
+    if (totalTrackCount === 0) {
+      this._lastScrolledToEnd = false;
+      this._lastScrolledToStart = false;
+      return;
+    }
+
+    const lookAhead = this._forwardScroll
+      ? this.incomingAssetPreparationFactor
+      : this.outgoingBufferFactor;
+    const lookBehind = this._forwardScroll
+      ? this.outgoingBufferFactor
+      : this.incomingAssetPreparationFactor;
+
+    const endReach =
+      scrollIndex +
+      1 +
+      visibleTrackCount +
+      Math.ceil(lookAhead * visibleTrackCount);
+    const startReach = scrollIndex - Math.ceil(lookBehind * visibleTrackCount);
+
+    const nowAtEnd = endReach >= totalTrackCount;
+    const nowAtStart = startReach <= 0;
+
     if (nowAtEnd && !this._lastScrolledToEnd) this.onScrolledToEnd?.();
     if (nowAtStart && !this._lastScrolledToStart) this.onScrolledToStart?.();
+
     this._lastScrolledToEnd = nowAtEnd;
     this._lastScrolledToStart = nowAtStart;
-
-    // second update scroller content
-    this._viewport.setRenderedRange(range);
-    this._viewport.setRenderedContentOffset(this._offset(range.start));
   }
 
   /**

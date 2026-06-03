@@ -227,7 +227,12 @@ A full working example is included in the source under [`src/example-usage/`](pr
 
 ## License
 
-[MIT](LICENSE)
+Dual-licensed under your choice of either:
+
+- [MIT](LICENSE-MIT) — permissive use, including commercial and closed-source applications.
+- [GPL-3.0-only](LICENSE-GPL-3.0) — copyleft use for GPL-compatible projects.
+
+The npm package metadata uses `MIT OR GPL-3.0-only`, so consumers may choose the MIT license.
 
 ## Copyright
 
